@@ -1,0 +1,64 @@
+.manufacturers-page {
+  min-height: 60vh;
+  padding: 40px 0;
+}
+
+.manufacturers-title {
+  font-size: 2rem;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.manufacturers-subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 40px;
+  max-width: 760px;
+}
+
+.manufacturers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.manufacturer-card {
+  display: block;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  text-decoration: none;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.manufacturer-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-light);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.manufacturer-card h3 {
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+}
+
+.manufacturer-card p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .manufacturers-page {
+    padding: 32px 0;
+  }
+
+  .manufacturers-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,26 @@
+# Runtime logs and local machine artifacts
+logs/
+runtime-logs/
+.codex-logs/
+.codex-local-logs/
+*.log
+error_full.txt
+error_output.txt
+
+# Node / Next.js
+**/node_modules/
+**/.next/
+**/out/
+**/coverage/
+
+# Environment files
+API/.env
+user/.env
+workspace/.env
+
+# Build / package output
+dist/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

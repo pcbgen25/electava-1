@@ -1,0 +1,23 @@
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+email	varchar(255)	NO	UNI	NULL	
+username	varchar(255)	NO	UNI	NULL	
+password	varchar(255)	NO		NULL	
+full_name	varchar(255)	NO			
+role	enum('core','sub_core','employee','vendor')	NO		NULL	
+domain_id	int(11)	YES	MUL	NULL	
+is_active	tinyint(1)	YES		1	
+force_password_change	tinyint(1)	YES		0	
+avatar	varchar(255)	YES		NULL	
+phone	varchar(50)	YES		NULL	
+created_at	timestamp	NO		current_timestamp()	
+updated_at	timestamp	NO		current_timestamp()	on update current_timestamp()
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+user_id	int(11)	YES	MUL	NULL	
+ip_address	varchar(45)	YES		NULL	
+user_agent	text	YES		NULL	
+device_type	varchar(50)	YES		NULL	
+browser	varchar(100)	YES		NULL	
+status	enum('success','failed')	YES		success	
+created_at	timestamp	NO		current_timestamp()	

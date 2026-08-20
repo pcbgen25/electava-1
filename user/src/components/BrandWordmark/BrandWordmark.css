@@ -1,0 +1,39 @@
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.brand-link-centered {
+  justify-content: center;
+  width: 100%;
+}
+
+.brand-wordmark {
+  display: inline-block;
+  color: var(--text-primary);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+.brand-wordmark span {
+  color: var(--accent-primary);
+}
+
+.brand-wordmark-sm {
+  font-size: 1.4rem;
+}
+
+.brand-wordmark-md {
+  font-size: 1.7rem;
+}
+
+.brand-wordmark-lg {
+  font-size: clamp(1.8rem, 2vw, 2.15rem);
+}
+
+.brand-wordmark-xl {
+  font-size: clamp(2.1rem, 2.8vw, 2.6rem);
+}

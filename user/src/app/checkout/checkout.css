@@ -1,0 +1,108 @@
+/* Checkout Page */
+.checkout-page {
+  min-height: 100vh;
+}
+
+.checkout-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--space-xl);
+  padding: var(--space-xl) 0;
+}
+
+.checkout-step h2 {
+  font-size: 1.3rem;
+  margin-bottom: var(--space-lg);
+}
+
+.checkout-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+}
+
+.checkout-summary {
+  position: sticky;
+  top: 160px;
+  height: fit-content;
+}
+
+/* Review */
+.review-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.review-section h4 {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-sm);
+}
+
+.review-section p {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.review-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+
+.review-item:last-child { border-bottom: none; }
+
+.review-item-name { flex: 1; }
+.review-item-qty { color: var(--text-tertiary); }
+.review-item-price { font-weight: 700; color: var(--accent-primary); }
+
+/* Order Confirmation */
+.order-confirmation {
+  text-align: center;
+  padding: 80px 0;
+  animation: fadeIn 0.5s ease;
+}
+
+.order-success-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), #00b894);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin-bottom: var(--space-lg);
+  animation: pulse 2s ease infinite;
+}
+
+.order-confirmation h1 {
+  font-size: 2rem;
+  margin-bottom: var(--space-sm);
+}
+
+.order-number {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
+@media (max-width: 992px) {
+  .checkout-layout { grid-template-columns: 1fr; }
+  .checkout-summary { position: static; }
+}
+
+@media (max-width: 576px) {
+  .checkout-form-grid { grid-template-columns: 1fr; }
+  .checkout-form-grid .form-group[style*="grid-column"] { grid-column: span 1 !important; }
+}
