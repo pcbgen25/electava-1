@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Open Electava</title>
+  <style>
+    body { font-family: Segoe UI, sans-serif; max-width: 520px; margin: 48px auto; padding: 0 16px; }
+    a { display: block; margin: 12px 0; padding: 14px 18px; background: #0b5fff; color: #fff; text-decoration: none; border-radius: 8px; }
+    a.secondary { background: #222; }
+    p { color: #444; }
+  </style>
+</head>
+<body>
+  <h1>Electava</h1>
+  <p>Click to open each local service:</p>
+  <a href="http://127.0.0.1:3000" target="_blank" rel="noopener">Open Website (port 3000)</a>
+  <a class="secondary" href="http://127.0.0.1:8000/login.php" target="_blank" rel="noopener">Open Workspace (port 8000)</a>
+  <a class="secondary" href="http://127.0.0.1:5000" target="_blank" rel="noopener">Open API (port 5000)</a>
+  <script>
+    window.open("http://127.0.0.1:3000", "_blank");
+    window.open("http://127.0.0.1:8000/login.php", "_blank");
+  </script>
+</body>
+</html>

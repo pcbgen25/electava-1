@@ -52,7 +52,6 @@ export default function ContactPage() {
         <div className="contact-hero-pattern" />
         <div className="container">
           <div className="contact-hero-content">
-            <span className="contact-badge">Contact Electava</span>
             <h1>Talk to our team for support, inquiries, and partnerships.</h1>
             <p>
               Use this page for general communication with Electava. If you need PCB design, BOM analysis,
@@ -91,9 +90,6 @@ export default function ContactPage() {
               </div>
 
               <div className="card contact-support-card">
-                <div className="contact-card-icon">
-                  <FiHeadphones />
-                </div>
                 <h3>What we can help with</h3>
                 <p>We route general inquiries quickly so you can reach the right team without extra back-and-forth.</p>
                 <ul className="contact-support-list">
@@ -104,9 +100,6 @@ export default function ContactPage() {
               </div>
 
               <div className="card contact-routing-card">
-                <div className="contact-card-icon">
-                  <FiShield />
-                </div>
                 <h3>Need a service quotation instead?</h3>
                 <p>
                   For PCB services, project builds, BOM analysis, manufacturer comparison, assembly, and testing requests,
@@ -120,7 +113,6 @@ export default function ContactPage() {
 
             <div className="card contact-form-shell">
               <div className="contact-form-intro">
-                <span className="badge badge-info">General Contact</span>
                 <h2>Send a message</h2>
                 <p>Share your question, request, or update and we&apos;ll connect you with the right person.</p>
               </div>

@@ -25,7 +25,6 @@ export default async function Home() {
         <div className="container">
           <div className="hero-grid">
             <div className="hero-content">
-              <div className="hero-badge">🚀 The Future of Component Sourcing</div>
               <h1>Find Every Electronic<br />Component You Need</h1>
               <p className="hero-subtitle">
                 Access millions of electronic components from 800+ manufacturers.

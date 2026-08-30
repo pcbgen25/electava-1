@@ -40,29 +40,13 @@ function mapUser(row) {
     };
 }
 
-async function getAuthStore() {
-    const [userTables] = await db.query("SHOW TABLES LIKE 'users'");
-    if (userTables.length > 0) {
-        return {
-            table: 'users',
-            passwordColumn: 'password_hash',
-            activeCheck: "status = 'active'",
-            activeValues: { status: 'active', is_active: 1 },
-        };
-    }
+// Marketplace always uses the `users` table.
+// The `employees` table is exclusively for workspace staff (core_admin, admin, employee, service_team).
+const MARKETPLACE_STORE = {
+    table: 'users',
+    passwordColumn: 'password_hash',
+};
 
-    const [employeeTables] = await db.query("SHOW TABLES LIKE 'employees'");
-    if (employeeTables.length > 0) {
-        return {
-            table: 'employees',
-            passwordColumn: 'password',
-            activeCheck: "(status = 'active' OR is_active = 1)",
-            activeValues: { status: 'active', is_active: 1 },
-        };
-    }
-
-    throw new Error('No users or employees table found in the configured database.');
-}
 
 function runPhp(code, args) {
     const result = spawnSync(PHP_BIN, ['-r', code, ...args], {
@@ -150,57 +134,44 @@ function mapComponent(row) {
     };
 }
 
-// POST /api/auth/register
+// POST /api/auth/register  — marketplace registrations always go to `users` table
 router.post('/auth/register', async (req, res) => {
     try {
         const firstName = String(req.body.firstName || '').trim();
-        const lastName = String(req.body.lastName || '').trim();
-        const email = normalizeEmail(req.body.email);
-        const password = String(req.body.password || '');
-        const company = String(req.body.company || '').trim();
+        const lastName  = String(req.body.lastName  || '').trim();
+        const email     = normalizeEmail(req.body.email);
+        const password  = String(req.body.password  || '');
+        const company   = String(req.body.company   || '').trim();
 
         if (!firstName || !lastName || !email || !password) {
             return res.status(400).json({ error: 'All required fields must be filled.' });
         }
-
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ error: 'Please enter a valid email address.' });
         }
-
         if (password.length < 8) {
             return res.status(400).json({ error: 'Password must be at least 8 characters.' });
         }
 
-        const authStore = await getAuthStore();
-        const [existing] = await db.query(`SELECT id, email FROM ${authStore.table} WHERE email = ? LIMIT 1`, [email]);
-        if (existing.length > 0) {
+        // Check both tables so workspace staff can't re-register on marketplace
+        const [existingUsers]     = await db.query('SELECT id FROM users     WHERE email = ? LIMIT 1', [email]);
+        const [existingEmployees] = await db.query('SELECT id FROM employees WHERE email = ? LIMIT 1', [email]);
+        if (existingUsers.length > 0 || existingEmployees.length > 0) {
             return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
         }
 
-        const username = await getAvailableUsername(buildUsername(email), authStore.table);
+        const username     = await getAvailableUsername(buildUsername(email), 'users');
         const passwordHash = hashPassword(password);
-        const fullName = `${firstName} ${lastName}`.trim();
+        const fullName     = `${firstName} ${lastName}`.trim();
 
-        const [result] = authStore.table === 'employees'
-            ? await db.query(`
-                INSERT INTO employees (email, username, password, full_name, role, status, is_active, phone, job_title, notes)
-                VALUES (?, ?, ?, ?, 'vendor', 'active', 1, '', 'Marketplace User', ?)
-            `, [email, username, passwordHash, fullName, company || 'Electava Marketplace'])
-            : await db.query(`
-                INSERT INTO users (email, username, password_hash, full_name, role, status, phone, job_title, notes)
-                VALUES (?, ?, ?, ?, 'vendor', 'active', '', 'Marketplace User', ?)
-            `, [email, username, passwordHash, fullName, company || 'Electava Marketplace']);
+        // Always insert into `users` with role = 'marketplace_user'
+        const [result] = await db.query(`
+            INSERT INTO users (email, username, password_hash, full_name, role, status, phone, job_title, notes)
+            VALUES (?, ?, ?, ?, 'marketplace_user', 'active', '', 'Marketplace User', ?)
+        `, [email, username, passwordHash, fullName, company || 'Electava Marketplace']);
 
-        const [vendorTables] = await db.query("SHOW TABLES LIKE 'vendors'");
-        if (vendorTables.length > 0) {
-            await db.query(`
-                INSERT INTO vendors (user_id, company_name, contact_person, is_approved)
-                VALUES (?, ?, ?, 0)
-            `, [result.insertId, company || `${fullName}'s Company`, fullName]);
-        }
-
-        const [rows] = await db.query(`SELECT * FROM ${authStore.table} WHERE id = ? LIMIT 1`, [result.insertId]);
-        const user = mapUser(rows[0]);
+        const [rows] = await db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [result.insertId]);
+        const user   = mapUser(rows[0]);
 
         res.status(201).json({
             success: true,
@@ -213,40 +184,28 @@ router.post('/auth/register', async (req, res) => {
     }
 });
 
-// POST /api/auth/login
+// POST /api/auth/login  — marketplace login always checks `users` table
 router.post('/auth/login', async (req, res) => {
     try {
-        const login = normalizeEmail(req.body.email || req.body.login);
+        const login    = normalizeEmail(req.body.email || req.body.login);
         const password = String(req.body.password || '');
 
         if (!login || !password) {
             return res.status(400).json({ error: 'Email and password are required.' });
         }
 
-        const authStore = await getAuthStore();
-        const [rows] = authStore.table === 'employees'
-            ? await db.query(`
-                SELECT id, email, username, password AS password_hash, full_name, role, status, is_active, phone, job_title, notes, created_at
-                FROM employees
-                WHERE email = ? OR username = ?
-                LIMIT 1
-            `, [login, login])
-            : await db.query(`
-                SELECT id, email, username, password_hash, full_name, role, status, 1 AS is_active, phone, job_title, notes, created_at
-                FROM users
-                WHERE email = ? OR username = ?
-                LIMIT 1
-            `, [login, login]);
+        const [rows] = await db.query(`
+            SELECT id, email, username, password_hash, full_name, role, status, phone, job_title, notes, created_at
+            FROM users
+            WHERE (email = ? OR username = ?) AND status = 'active'
+            LIMIT 1
+        `, [login, login]);
 
         if (rows.length === 0 || !verifyPassword(password, rows[0].password_hash)) {
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
 
-        if (rows[0].status !== 'active' && rows[0].is_active !== 1) {
-            return res.status(403).json({ error: 'Your account is inactive. Please contact Electava support.' });
-        }
-
-        await db.query(`UPDATE ${authStore.table} SET last_login_at = NOW() WHERE id = ?`, [rows[0].id]);
+        await db.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [rows[0].id]);
 
         res.json({
             success: true,
@@ -258,6 +217,7 @@ router.post('/auth/login', async (req, res) => {
         res.status(500).json({ error: 'Unable to sign in right now. Please try again.' });
     }
 });
+
 
 // GET /api/components
 router.get('/components', async (req, res) => {
@@ -424,6 +384,44 @@ router.get('/careers', async (req, res) => {
     } catch (error) {
         console.error('Careers Error:', error);
         res.status(500).json({ error: 'Failed to fetch careers' });
+    }
+});
+
+// GET /api/account/orders
+router.get('/account/orders', async (req, res) => {
+    try {
+        const userId = req.query.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        
+        const query = `
+            SELECT o.*, 
+                   COUNT(oi.id) as items_count,
+                   GROUP_CONCAT(CONCAT(c.name, ' (x', oi.quantity, ')') SEPARATOR ', ') as items_summary
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            LEFT JOIN components c ON oi.component_id = c.id
+            WHERE o.customer_id = ?
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+        `;
+        const [rows] = await db.query(query, [userId]);
+        
+        const mapped = rows.map(r => ({
+            id: `ELV-SO-${10000 + r.id}`,
+            db_id: r.id,
+            date: r.created_at ? r.created_at.toISOString().split('T')[0] : 'N/A',
+            itemsCount: r.items_count || 0,
+            itemsSummary: r.items_summary || 'No items',
+            total: parseFloat(r.total) || 0,
+            status: r.status ? (r.status.charAt(0).toUpperCase() + r.status.slice(1)) : 'Pending',
+            trackingNumber: r.status === 'shipped' || r.status === 'delivered' ? `TRK-${100000+r.id}-IN` : null,
+            carrier: r.status === 'shipped' || r.status === 'delivered' ? 'BlueDart Express' : null,
+        }));
+        
+        res.json(mapped);
+    } catch (error) {
+        console.error('Orders Error:', error);
+        res.status(500).json({ error: 'Failed to fetch orders' });
     }
 });
 

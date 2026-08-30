@@ -411,7 +411,7 @@ INSERT IGNORE INTO domains (id, name, description, is_active, approval_required)
 -- Default Users (password: Electava@2025)
 -- Hash generated via password_hash('Electava@2025', PASSWORD_BCRYPT)
 INSERT IGNORE INTO users (id, email, username, password_hash, full_name, role, domain_id, status) VALUES
-(1, 'admin@electava.com', 'admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Core Administrator', 'core_admin', NULL, 'active');
+(1, 'admin@electava.com', 'admin', '$2y$10$jx/m9eD91kk9yq/4AqyB2.d7GRHxI8jEMAsnd394VQWQY1okPHn2u', 'Core Administrator', 'core_admin', NULL, 'active');
 
 -- Modules
 INSERT IGNORE INTO modules (id, name, display_name, description, icon) VALUES

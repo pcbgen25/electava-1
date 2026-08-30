@@ -79,7 +79,6 @@ export default async function CareersPage() {
         <div className="container">
           <div className="careers-hero-grid">
             <div className="careers-hero-copy">
-              <span className="careers-badge">Careers at Electava</span>
               <h1>Help build the future of electronics sourcing and PCB services.</h1>
               <p className="careers-hero-text">
                 We are building a simpler path from idea to manufactured board. Join us if you enjoy practical problem-solving, thoughtful product work, and helping engineers move faster.
@@ -215,7 +214,6 @@ export default async function CareersPage() {
         <div className="container">
           <div className="careers-application-grid">
             <div className="careers-application-copy">
-              <span className="badge badge-success">Career Application</span>
               <h2 className="section-title">Apply directly from the careers page</h2>
               <p className="section-subtitle">
                 This page is now fully separate from contact. Use the application form here to tell us about your background,

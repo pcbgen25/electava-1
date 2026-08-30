@@ -6,9 +6,28 @@
         document.addEventListener('DOMContentLoaded', () => {
             const root = document.documentElement;
             const path = window.location.pathname;
+
+            // Dashboard hrefs that must use EXACT match only
+            const exactMatchHrefs = ['/core_admin/', '/admin/', '/employee/', '/vendor/'];
+
             document.querySelectorAll('.sidebar-item').forEach(item => {
                 const href = item.getAttribute('href');
-                if (href === path || (path.endsWith('/') && href === path) || (href !== '/' && path.startsWith(href.replace(/\/$/, '')))) {
+                if (!href) return;
+
+                const normalizedHref = href.replace(/\/$/, '');
+                const normalizedPath = path.replace(/\/$/, '');
+
+                let isActive = false;
+                if (exactMatchHrefs.includes(href)) {
+                    // Dashboard: exact match only
+                    isActive = normalizedPath === normalizedHref || path === href;
+                } else {
+                    // Other links: match exact or sub-paths
+                    isActive = normalizedPath === normalizedHref || path === href ||
+                        (normalizedHref !== '' && path.startsWith(normalizedHref + '/'));
+                }
+
+                if (isActive) {
                     item.classList.add('active');
                 }
             });

@@ -113,13 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         </div>
 
-
-
-
-
         <p class="text-center text-[11px] text-slate-700 mt-4">&copy; <?= date('Y') ?> Electava &mdash; Internal Use Only</p>
     </div>
-
-
 </body>
 </html>

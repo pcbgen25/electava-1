@@ -36,30 +36,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Fetch all unique users from service_tokens + marketplace_tracking
-$tokenUsers = $pdo->query("SELECT DISTINCT user_email FROM service_tokens WHERE user_email IS NOT NULL AND user_email != ''")->fetchAll(PDO::FETCH_COLUMN);
-$trackingUsers = $pdo->query("SELECT DISTINCT session_id FROM marketplace_tracking")->fetchAll(PDO::FETCH_COLUMN);
+// Fetch registered marketplace users
+$usersQuery = "
+    SELECT u.id, u.email as user_email, u.full_name, u.created_at as registered_at, u.last_login_at,
+           COUNT(st.id) as total_requests,
+           MIN(st.created_at) as first_request,
+           MAX(st.created_at) as last_request,
+           GROUP_CONCAT(DISTINCT st.service_type SEPARATOR ', ') as services
+    FROM users u
+    LEFT JOIN service_tokens st ON u.email = st.user_email
+    WHERE u.role = 'marketplace_user' OR u.role = 'vendor'
+    GROUP BY u.id
+    ORDER BY u.created_at DESC
+";
+$userEmails = $pdo->query($usersQuery)->fetchAll();
 
-
-// Build user list from service_tokens grouped by email
-$userEmails = $pdo->query("
-    SELECT user_email, 
-           COUNT(*) as total_requests,
-           MIN(created_at) as first_request,
-           MAX(created_at) as last_request,
-           GROUP_CONCAT(DISTINCT service_type SEPARATOR ', ') as services,
-           GROUP_CONCAT(DISTINCT status SEPARATOR ', ') as statuses
-    FROM service_tokens 
-    WHERE user_email IS NOT NULL AND user_email != '' 
-    GROUP BY user_email 
+// Add unregistered users who have made service requests
+$unregisteredQuery = "
+    SELECT NULL as id, st.user_email, 'Unregistered Visitor' as full_name, NULL as registered_at, NULL as last_login_at,
+           COUNT(st.id) as total_requests,
+           MIN(st.created_at) as first_request,
+           MAX(st.created_at) as last_request,
+           GROUP_CONCAT(DISTINCT st.service_type SEPARATOR ', ') as services
+    FROM service_tokens st
+    LEFT JOIN users u ON st.user_email = u.email
+    WHERE u.id IS NULL AND st.user_email IS NOT NULL AND st.user_email != ''
+    GROUP BY st.user_email
     ORDER BY last_request DESC
-")->fetchAll();
+";
+$unregisteredUsers = $pdo->query($unregisteredQuery)->fetchAll();
+
+$userEmails = array_merge($userEmails, $unregisteredUsers);
 
 // Search
 $search = $_GET['search'] ?? '';
 if ($search) {
     $userEmails = array_filter($userEmails, function($u) use ($search) {
-        return stripos($u['user_email'], $search) !== false || stripos($u['services'], $search) !== false;
+        return stripos($u['user_email'], $search) !== false || 
+               stripos($u['services'] ?? '', $search) !== false ||
+               stripos($u['full_name'], $search) !== false;
     });
 }
 
@@ -127,10 +142,10 @@ $totalPageViews = $pdo->query("SELECT COUNT(*) FROM marketplace_tracking")->fetc
     <table class="w-full text-left text-sm">
         <thead class="text-xs text-slate-400 uppercase tracking-wider bg-slate-900/80 border-b border-slate-800">
             <tr>
-                <th class="px-5 py-4 font-semibold">User Email</th>
+                <th class="px-5 py-4 font-semibold">User</th>
                 <th class="px-5 py-4 font-semibold">Requests</th>
                 <th class="px-5 py-4 font-semibold">Services</th>
-                <th class="px-5 py-4 font-semibold">First Request</th>
+                <th class="px-5 py-4 font-semibold">Registered</th>
                 <th class="px-5 py-4 font-semibold">Last Request</th>
                 <th class="px-5 py-4 font-semibold text-right">Action</th>
             </tr>
@@ -140,21 +155,21 @@ $totalPageViews = $pdo->query("SELECT COUNT(*) FROM marketplace_tracking")->fetc
             <tr class="table-row cursor-pointer hover:bg-slate-800/30 transition-colors" onclick="openUserDetail('<?= htmlspecialchars($ue['user_email'], ENT_QUOTES) ?>')">
                 <td class="px-5 py-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-xs font-bold text-white shadow-lg">
-                            <?= strtoupper(substr($ue['user_email'], 0, 1)) ?>
+                        <div class="w-9 h-9 rounded-full bg-gradient-to-br <?= $ue['id'] ? 'from-emerald-500 to-teal-700' : 'from-purple-600 to-indigo-700' ?> flex items-center justify-center text-xs font-bold text-white shadow-lg">
+                            <?= strtoupper(substr($ue['full_name'] ?? $ue['user_email'], 0, 1)) ?>
                         </div>
                         <div>
-                            <div class="font-medium text-white"><?= htmlspecialchars($ue['user_email']) ?></div>
-                            <div class="text-[10px] text-slate-500">Marketplace Customer</div>
+                            <div class="font-medium text-white"><?= htmlspecialchars($ue['full_name']) ?></div>
+                            <div class="text-[10px] text-slate-500"><?= htmlspecialchars($ue['user_email']) ?></div>
                         </div>
                     </div>
                 </td>
                 <td class="px-5 py-4">
                     <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-xs font-bold"><?= $ue['total_requests'] ?></span>
                 </td>
-                <td class="px-5 py-4 text-xs text-slate-300 max-w-[200px] truncate"><?= htmlspecialchars(ucwords(str_replace('-', ' ', $ue['services']))) ?></td>
-                <td class="px-5 py-4 text-xs text-slate-400"><?= date('M j, Y', strtotime($ue['first_request'])) ?></td>
-                <td class="px-5 py-4 text-xs text-slate-400"><?= date('M j, Y H:i', strtotime($ue['last_request'])) ?></td>
+                <td class="px-5 py-4 text-xs text-slate-300 max-w-[200px] truncate"><?= $ue['services'] ? htmlspecialchars(ucwords(str_replace('-', ' ', $ue['services']))) : '—' ?></td>
+                <td class="px-5 py-4 text-xs text-slate-400"><?= $ue['registered_at'] ? date('M j, Y', strtotime($ue['registered_at'])) : '<span class="text-slate-600">Guest</span>' ?></td>
+                <td class="px-5 py-4 text-xs text-slate-400"><?= $ue['last_request'] ? date('M j, Y H:i', strtotime($ue['last_request'])) : '—' ?></td>
                 <td class="px-5 py-4 text-right" onclick="event.stopPropagation()">
                     <button onclick="openUserDetail('<?= htmlspecialchars($ue['user_email'], ENT_QUOTES) ?>')" class="text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition">
                         <i class="fa-solid fa-eye mr-1"></i>View Details
@@ -163,7 +178,7 @@ $totalPageViews = $pdo->query("SELECT COUNT(*) FROM marketplace_tracking")->fetc
             </tr>
             <?php endforeach; ?>
             <?php if (empty($userEmails)): ?>
-            <tr><td colspan="6" class="px-5 py-12 text-center text-slate-500 text-sm">No marketplace users found yet. Users will appear here once they submit quotation requests.</td></tr>
+            <tr><td colspan="6" class="px-5 py-12 text-center text-slate-500 text-sm">No marketplace users found yet.</td></tr>
             <?php endif; ?>
         </tbody>
     </table>
