@@ -29,11 +29,11 @@ Local URLs:
 - Main schema file: [workspace/install.sql](/D:/Electava/Codex/electava-1/workspace/install.sql)
 - Marketplace tracking/service tokens schema: [workspace/tracking.sql](/D:/Electava/Codex/electava-1/workspace/tracking.sql)
 
-## Default Internal Logins
+## First-Run Setup
 
-- Core Admin: `admin@electava.com` / `Electava@2025`
-- Service Team: `service.team@electava.com` / `Electava@2025`
-- Vendor: `vendor1@electava.com` / `Electava@2025`
+On first deployment, run the setup script to create your admin account with a secure randomly-generated password. Default credentials are not seeded — see `deployment/SETUP.md` for instructions.
+
+> **Never commit real passwords or credentials to this repository.**
 
 ## Notes
 

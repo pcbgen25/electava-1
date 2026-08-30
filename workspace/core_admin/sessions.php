@@ -36,9 +36,9 @@ $uniqueIPs = $pdo->query("SELECT COUNT(DISTINCT ip_address) FROM login_logs WHER
                 <td class="px-5 py-3 text-white text-xs font-medium"><?= htmlspecialchars($l['full_name']??$l['username']??'—') ?></td>
                 <td class="px-5 py-3 text-xs text-slate-400 capitalize"><?= str_replace('_',' ',$l['role']??'—') ?></td>
                 <td class="px-5 py-3"><?= statusBadge($l['status']) ?></td>
-                <td class="px-5 py-3 text-xs text-slate-400"><i class="fa-solid <?= $l['device_type']==='Mobile'?'fa-mobile-screen':'fa-desktop' ?> mr-1 text-slate-600"></i><?= $l['device_type'] ?></td>
-                <td class="px-5 py-3 text-xs text-slate-400"><?= $l['browser'] ?></td>
-                <td class="px-5 py-3 text-xs text-slate-600 font-mono"><?= $l['ip_address'] ?></td>
+                <td class="px-5 py-3 text-xs text-slate-400"><i class="fa-solid <?= $l['device_type']==='Mobile'?'fa-mobile-screen':'fa-desktop' ?> mr-1 text-slate-600"></i><?= htmlspecialchars($l['device_type'] ?? '—') ?></td>
+                <td class="px-5 py-3 text-xs text-slate-400"><?= htmlspecialchars($l['browser'] ?? '—') ?></td>
+                <td class="px-5 py-3 text-xs text-slate-600 font-mono"><?= htmlspecialchars($l['ip_address'] ?? '—') ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>

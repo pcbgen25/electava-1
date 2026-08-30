@@ -24,3 +24,31 @@ dist/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# PHP session files — must never be committed
+workspace/sessions/
+
+# Debug / credential / migration scripts — delete these, never commit
+workspace/fix_passwords.php
+workspace/fix_pass.sql
+workspace/fix_password.sql
+workspace/db_fix.php
+workspace/final_db_fix.php
+workspace/verify_pass.php
+workspace/check_hash_full.php
+workspace/test_login.php
+workspace/test_db.php
+workspace/check_env.php
+workspace/generate_test_data.php
+workspace/login_debug.txt
+
+# Root-level SQL seed/migration one-offs
+fix_marketplace_users.sql
+seed_orders.sql
+seed_order_items.sql
+*.sql.bak
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp

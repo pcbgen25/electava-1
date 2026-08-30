@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $jobTitle = trim($_POST['job_title'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
         $stmt = $pdo->prepare("INSERT INTO users (email, username, password_hash, full_name, phone, job_title, notes, role, domain_id, allowed_domains, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
-        $stmt->execute([$email, $username, $password, $fullName, $phone, $jobTitle, $notes, $role, $domainId, $allowedDomains, clone $_SESSION['user_id'] ?? null]);
+        $stmt->execute([$email, $username, $password, $fullName, $phone, $jobTitle, $notes, $role, $domainId, $allowedDomains, $_SESSION['user_id'] ?? null]);
         $empId = $pdo->lastInsertId();
         logAudit($pdo, 'create_employee', 'employee', $empId, "Created employee: $username ($role)");
         notify($pdo, $empId, 'Welcome to Electava Workspace', 'Your account has been created.', 'info');
@@ -31,10 +31,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $msg = 'Employee status updated.';
     } elseif ($_POST['action'] === 'reset_password') {
         $uid = (int)$_POST['user_id'];
-        $newPass = password_hash('Electava@2025', PASSWORD_DEFAULT);
+        // Generate a cryptographically random temporary password
+        $tempPass = bin2hex(random_bytes(10));
+        $newPass = password_hash($tempPass, PASSWORD_BCRYPT, ['cost' => 12]);
         $pdo->prepare("UPDATE users SET password_hash = ?, force_password_change = 1 WHERE id = ?")->execute([$newPass, $uid]);
-        logAudit($pdo, 'reset_password', 'employee', $uid, 'Password reset to default');
-        $msg = 'Password reset to Electava@2025.';
+        logAudit($pdo, 'reset_password', 'employee', $uid, 'Password reset to random temporary password');
+        $msg = "Password reset. Temporary password: <strong>" . htmlspecialchars($tempPass) . "</strong> — user must change on next login.";
     } elseif ($_POST['action'] === 'delete') {
         $uid = (int)$_POST['user_id'];
         if ($uid !== $_SESSION['user_id']) {
@@ -198,7 +200,7 @@ $domainsJson = json_encode($domains);
                 <div><label class="block text-xs text-slate-400 mb-1.5">Email</label><input type="email" name="email" required class="input-field w-full px-3 py-2 rounded-lg text-sm"></div>
                 <div><label class="block text-xs text-slate-400 mb-1.5">Phone</label><input type="text" name="phone" class="input-field w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
-            <div><label class="block text-xs text-slate-400 mb-1.5">Password</label><input type="password" name="password" required value="Electava@2025" class="input-field w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="block text-xs text-slate-400 mb-1.5">Password</label><input type="password" name="password" required placeholder="Enter a strong password" class="input-field w-full px-3 py-2 rounded-lg text-sm"></div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs text-slate-400 mb-1.5">Role</label>

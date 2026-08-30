@@ -1,9 +1,13 @@
-const express = require('express');
-const { spawnSync } = require('child_process');
-const router = express.Router();
-const db = require('../config/db');
+'use strict';
 
-const PHP_BIN = process.env.PHP_BIN || (process.platform === 'win32' ? 'C:\\xampp\\php\\php.exe' : 'php');
+const express  = require('express');
+const bcrypt   = require('bcryptjs');
+const crypto   = require('crypto');
+const router   = express.Router();
+const db       = require('../config/db');
+const { authenticateToken, requireRole, signToken } = require('../middleware/auth');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
@@ -18,68 +22,52 @@ function splitFullName(fullName) {
     const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
     return {
         firstName: parts[0] || 'Marketplace',
-        lastName: parts.slice(1).join(' ') || 'User',
+        lastName:  parts.slice(1).join(' ') || 'User',
     };
 }
 
+/** Safe public user object — never includes password_hash or internal fields */
 function mapUser(row) {
     const { firstName, lastName } = splitFullName(row.full_name);
-
     return {
-        id: row.id,
-        email: row.email,
-        username: row.username,
+        id:          row.id,
+        email:       row.email,
+        username:    row.username,
         firstName,
         lastName,
-        fullName: row.full_name || `${firstName} ${lastName}`,
-        company: row.notes || 'Electava Marketplace',
-        phone: row.phone || '',
-        title: row.job_title || 'Marketplace User',
-        role: row.role,
+        fullName:    row.full_name || `${firstName} ${lastName}`,
+        company:     row.notes || 'Electava Marketplace',
+        phone:       row.phone || '',
+        title:       row.job_title || 'Marketplace User',
+        role:        row.role,
         memberSince: row.created_at,
     };
 }
 
-// Marketplace always uses the `users` table.
-// The `employees` table is exclusively for workspace staff (core_admin, admin, employee, service_team).
-const MARKETPLACE_STORE = {
-    table: 'users',
-    passwordColumn: 'password_hash',
-};
+// ─── Password helpers (bcryptjs — no PHP process spawning) ───────────────────
 
+const BCRYPT_ROUNDS = 12;
 
-function runPhp(code, args) {
-    const result = spawnSync(PHP_BIN, ['-r', code, ...args], {
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: 5000,
-    });
-
-    if (result.error || result.status !== 0) {
-        const message = result.error?.message || result.stderr || 'PHP command failed';
-        throw new Error(message);
-    }
-
-    return result.stdout.trim();
+async function hashPassword(password) {
+    return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
-function hashPassword(password) {
-    return runPhp('echo password_hash($argv[1], PASSWORD_BCRYPT);', [password]);
+async function verifyPassword(password, hash) {
+    return bcrypt.compare(password, hash);
 }
 
-function verifyPassword(password, hash) {
-    return runPhp('echo password_verify($argv[1], $argv[2]) ? "1" : "0";', [password, hash]) === '1';
-}
-
-async function getAvailableUsername(baseUsername, table) {
+/** Username deduplication — only ever queries the `users` table (hardcoded) */
+async function getAvailableUsername(baseUsername) {
     let username = baseUsername;
-    let suffix = 2;
-
+    let suffix   = 2;
     while (true) {
-        const [rows] = await db.query(`SELECT id FROM ${table} WHERE username = ? LIMIT 1`, [username]);
+        const [rows] = await db.query(
+            'SELECT id FROM users WHERE username = ? LIMIT 1',
+            [username]
+        );
         if (rows.length === 0) return username;
         username = `${baseUsername}${suffix}`;
-        suffix += 1;
+        suffix  += 1;
     }
 }
 
@@ -137,11 +125,11 @@ function mapComponent(row) {
 // POST /api/auth/register  — marketplace registrations always go to `users` table
 router.post('/auth/register', async (req, res) => {
     try {
-        const firstName = String(req.body.firstName || '').trim();
-        const lastName  = String(req.body.lastName  || '').trim();
+        const firstName = String(req.body.firstName || '').trim().slice(0, 100);
+        const lastName  = String(req.body.lastName  || '').trim().slice(0, 100);
         const email     = normalizeEmail(req.body.email);
         const password  = String(req.body.password  || '');
-        const company   = String(req.body.company   || '').trim();
+        const company   = String(req.body.company   || '').trim().slice(0, 200);
 
         if (!firstName || !lastName || !email || !password) {
             return res.status(400).json({ error: 'All required fields must be filled.' });
@@ -149,8 +137,8 @@ router.post('/auth/register', async (req, res) => {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ error: 'Please enter a valid email address.' });
         }
-        if (password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+        if (password.length < 8 || password.length > 128) {
+            return res.status(400).json({ error: 'Password must be 8–128 characters.' });
         }
 
         // Check both tables so workspace staff can't re-register on marketplace
@@ -160,26 +148,27 @@ router.post('/auth/register', async (req, res) => {
             return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
         }
 
-        const username     = await getAvailableUsername(buildUsername(email), 'users');
-        const passwordHash = hashPassword(password);
+        const username     = await getAvailableUsername(buildUsername(email));
+        const passwordHash = await hashPassword(password);
         const fullName     = `${firstName} ${lastName}`.trim();
 
         // Always insert into `users` with role = 'marketplace_user'
-        const [result] = await db.query(`
-            INSERT INTO users (email, username, password_hash, full_name, role, status, phone, job_title, notes)
-            VALUES (?, ?, ?, ?, 'marketplace_user', 'active', '', 'Marketplace User', ?)
-        `, [email, username, passwordHash, fullName, company || 'Electava Marketplace']);
+        const [result] = await db.query(
+            `INSERT INTO users (email, username, password_hash, full_name, role, status, phone, job_title, notes)
+             VALUES (?, ?, ?, ?, 'marketplace_user', 'active', '', 'Marketplace User', ?)`,
+            [email, username, passwordHash, fullName, company || 'Electava Marketplace']
+        );
 
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [result.insertId]);
-        const user   = mapUser(rows[0]);
+        const [rows] = await db.query(
+            'SELECT id, email, username, full_name, role, status, phone, job_title, notes, created_at FROM users WHERE id = ? LIMIT 1',
+            [result.insertId]
+        );
+        const user  = mapUser(rows[0]);
+        const token = signToken(rows[0]);
 
-        res.status(201).json({
-            success: true,
-            message: 'Account created successfully. You can now sign in.',
-            user,
-        });
+        res.status(201).json({ success: true, message: 'Account created successfully.', token, user });
     } catch (error) {
-        console.error('Register Error:', error);
+        console.error(`[register] ${error.message}`);
         res.status(500).json({ error: 'Unable to create account right now. Please try again.' });
     }
 });
@@ -194,52 +183,64 @@ router.post('/auth/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password are required.' });
         }
 
-        const [rows] = await db.query(`
-            SELECT id, email, username, password_hash, full_name, role, status, phone, job_title, notes, created_at
-            FROM users
-            WHERE (email = ? OR username = ?) AND status = 'active'
-            LIMIT 1
-        `, [login, login]);
+        const [rows] = await db.query(
+            `SELECT id, email, username, password_hash, full_name, role, status, phone, job_title, notes, created_at
+             FROM users
+             WHERE (email = ? OR username = ?)
+             LIMIT 1`,
+            [login, login]
+        );
 
-        if (rows.length === 0 || !verifyPassword(password, rows[0].password_hash)) {
+        // Constant-time: always run bcrypt compare even on no-match to prevent timing attacks
+        const dummyHash = '$2a$12$invalidhashfortimingprotectiononly000000000000000000000';
+        const hash      = rows.length > 0 ? rows[0].password_hash : dummyHash;
+        const valid     = await verifyPassword(password, hash);
+
+        if (!valid || rows.length === 0) {
             return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+        if (rows[0].status !== 'active') {
+            return res.status(403).json({ error: 'Your account is inactive. Please contact support.' });
         }
 
         await db.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [rows[0].id]);
 
-        res.json({
-            success: true,
-            message: 'Signed in successfully.',
-            user: mapUser(rows[0]),
-        });
+        const user  = mapUser(rows[0]);
+        const token = signToken(rows[0]);
+
+        res.json({ success: true, message: 'Signed in successfully.', token, user });
     } catch (error) {
-        console.error('Login Error:', error);
+        console.error(`[login] ${error.message}`);
         res.status(500).json({ error: 'Unable to sign in right now. Please try again.' });
     }
 });
 
 
-// GET /api/components
+// GET /api/components — public catalog, active products only, paginated
 router.get('/components', async (req, res) => {
     try {
-        const query = `
-            SELECT 
-                c.*, 
-                m.name AS manufacturer_name,
+        const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+        const offset = (page - 1) * limit;
+
+        const [rows] = await db.query(`
+            SELECT
+                c.*,
+                m.name   AS manufacturer_name,
                 cat.name AS category_name,
                 p_cat.name AS parent_category_name
             FROM components c
-            LEFT JOIN manufacturers m ON c.manufacturer_id = m.id
-            LEFT JOIN categories cat ON c.category_id = cat.id
-            LEFT JOIN categories p_cat ON cat.parent_id = p_cat.id
-            WHERE c.status = 'active' OR c.status IS NULL OR c.status = 'draft'
-        `;
-        const [rows] = await db.query(query);
-        const mapped = rows.map(mapComponent);
-        res.json(mapped);
+            LEFT JOIN manufacturers m    ON c.manufacturer_id = m.id
+            LEFT JOIN categories cat     ON c.category_id = cat.id
+            LEFT JOIN categories p_cat   ON cat.parent_id = p_cat.id
+            WHERE c.status = 'active'
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json(rows.map(mapComponent));
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: error.message });
+        console.error(`[components] ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch components.' });
     }
 });
 
@@ -330,98 +331,125 @@ router.get('/manufacturers', async (req, res) => {
 // POST /api/tracking
 router.post('/tracking', async (req, res) => {
     try {
-        const { sessionId, deviceType, browser, pageVisited } = req.body;
-        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        const userAgent = req.headers['user-agent'] || '';
-        
-        await db.query(`
-            INSERT INTO marketplace_tracking 
-            (session_id, ip_address, user_agent, device_type, browser, page_visited) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `, [sessionId, ipAddress, userAgent, deviceType, browser, pageVisited]);
-        
+        const sessionId   = String(req.body.sessionId   || '').slice(0, 64);
+        const deviceType  = String(req.body.deviceType  || '').slice(0, 50);
+        const browser     = String(req.body.browser     || '').slice(0, 100);
+        const pageVisited = String(req.body.pageVisited || '').slice(0, 500);
+        // Use socket address only — do NOT trust x-forwarded-for without verified proxy config
+        const ipAddress = req.socket.remoteAddress || '';
+        const userAgent = String(req.headers['user-agent'] || '').slice(0, 500);
+
+        await db.query(
+            `INSERT INTO marketplace_tracking
+             (session_id, ip_address, user_agent, device_type, browser, page_visited)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [sessionId, ipAddress, userAgent, deviceType, browser, pageVisited]
+        );
         res.json({ success: true });
     } catch (error) {
-        console.error('Tracking Error:', error);
-        res.status(500).json({ error: 'Failed to record tracking' });
+        console.error(`[tracking] ${error.message}`);
+        res.status(500).json({ error: 'Failed to record tracking.' });
     }
 });
 
-// POST /api/service-token
+// POST /api/service-token — cryptographically secure token generation
 router.post('/service-token', async (req, res) => {
     try {
-        const { userEmail, serviceType, details } = req.body;
-        // Generate a random token number like SRV-2026-ABCD
-        const randomString = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const tokenNumber = `SRV-2026-${randomString}`;
-        
-        await db.query(`
-            INSERT INTO service_tokens (token_number, user_email, service_type, details)
-            VALUES (?, ?, ?, ?)
-        `, [tokenNumber, userEmail, serviceType, details]);
-        
+        const userEmail   = normalizeEmail(req.body.userEmail);
+        const serviceType = String(req.body.serviceType || '').slice(0, 100);
+        const details     = typeof req.body.details === 'object'
+            ? JSON.stringify(req.body.details)
+            : String(req.body.details || '').slice(0, 5000);
+
+        if (!userEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+            return res.status(400).json({ error: 'Valid email is required.' });
+        }
+        if (!serviceType) {
+            return res.status(400).json({ error: 'Service type is required.' });
+        }
+
+        // Generate unique token with cryptographically secure random bytes + collision retry
+        let tokenNumber, attempts = 0;
+        while (attempts < 5) {
+            const rand = crypto.randomBytes(6).toString('hex').toUpperCase();
+            tokenNumber = `SRV-${new Date().getFullYear()}-${rand}`;
+            const [existing] = await db.query(
+                'SELECT id FROM service_tokens WHERE token_number = ? LIMIT 1',
+                [tokenNumber]
+            );
+            if (existing.length === 0) break;
+            attempts++;
+        }
+        if (attempts >= 5) throw new Error('Token generation collision limit reached');
+
+        await db.query(
+            `INSERT INTO service_tokens (token_number, user_email, service_type, details)
+             VALUES (?, ?, ?, ?)`,
+            [tokenNumber, userEmail, serviceType, details]
+        );
+
         res.json({ success: true, token: tokenNumber });
     } catch (error) {
-        console.error('Service Token Error:', error);
-        res.status(500).json({ error: 'Failed to generate token' });
+        console.error(`[service-token] ${error.message}`);
+        res.status(500).json({ error: 'Failed to generate token.' });
     }
 });
 
 // GET /api/careers
 router.get('/careers', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM careers WHERE status = "active" ORDER BY created_at DESC');
-        const formatted = rows.map(r => ({
-            id: r.id,
-            title: r.title,
-            team: r.team,
-            location: r.location,
-            type: r.type,
-            summary: r.summary,
-            highlights: JSON.parse(r.highlights_json || '[]')
-        }));
-        res.json(formatted);
+        const [rows] = await db.query(
+            'SELECT id, title, team, location, type, summary, highlights_json FROM careers WHERE status = "active" ORDER BY created_at DESC'
+        );
+        res.json(rows.map(r => ({
+            id:         r.id,
+            title:      r.title,
+            team:       r.team,
+            location:   r.location,
+            type:       r.type,
+            summary:    r.summary,
+            highlights: (() => { try { return JSON.parse(r.highlights_json || '[]'); } catch { return []; } })(),
+        })));
     } catch (error) {
-        console.error('Careers Error:', error);
-        res.status(500).json({ error: 'Failed to fetch careers' });
+        console.error(`[careers] ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch careers.' });
     }
 });
 
-// GET /api/account/orders
-router.get('/account/orders', async (req, res) => {
+// GET /api/account/orders — PROTECTED: requires valid JWT
+// BOLA fix: userId is read from the verified token, never from query params
+router.get('/account/orders', authenticateToken, async (req, res) => {
     try {
-        const userId = req.query.userId;
-        if (!userId) return res.status(400).json({ error: 'User ID is required' });
-        
-        const query = `
-            SELECT o.*, 
-                   COUNT(oi.id) as items_count,
-                   GROUP_CONCAT(CONCAT(c.name, ' (x', oi.quantity, ')') SEPARATOR ', ') as items_summary
+        const userId = req.user.id; // From verified JWT only — not from req.query
+
+        const [rows] = await db.query(`
+            SELECT o.*,
+                   COUNT(oi.id) AS items_count,
+                   GROUP_CONCAT(CONCAT(c.name, ' (x', oi.quantity, ')') SEPARATOR ', ') AS items_summary
             FROM orders o
             LEFT JOIN order_items oi ON o.id = oi.order_id
-            LEFT JOIN components c ON oi.component_id = c.id
+            LEFT JOIN components c   ON oi.component_id = c.id
             WHERE o.customer_id = ?
             GROUP BY o.id
             ORDER BY o.created_at DESC
-        `;
-        const [rows] = await db.query(query, [userId]);
-        
-        const mapped = rows.map(r => ({
-            id: `ELV-SO-${10000 + r.id}`,
-            db_id: r.id,
-            date: r.created_at ? r.created_at.toISOString().split('T')[0] : 'N/A',
-            itemsCount: r.items_count || 0,
+            LIMIT 100
+        `, [userId]);
+
+        res.json(rows.map(r => ({
+            id:           `ELV-SO-${10000 + r.id}`,
+            db_id:        r.id,
+            date:         r.created_at ? r.created_at.toISOString().split('T')[0] : 'N/A',
+            itemsCount:   r.items_count  || 0,
             itemsSummary: r.items_summary || 'No items',
-            total: parseFloat(r.total) || 0,
-            status: r.status ? (r.status.charAt(0).toUpperCase() + r.status.slice(1)) : 'Pending',
-            trackingNumber: r.status === 'shipped' || r.status === 'delivered' ? `TRK-${100000+r.id}-IN` : null,
-            carrier: r.status === 'shipped' || r.status === 'delivered' ? 'BlueDart Express' : null,
-        }));
-        
-        res.json(mapped);
+            total:        parseFloat(r.total) || 0,
+            status:       r.status ? (r.status.charAt(0).toUpperCase() + r.status.slice(1)) : 'Pending',
+            trackingNumber: (r.status === 'shipped' || r.status === 'delivered')
+                ? `TRK-${100000 + r.id}-IN` : null,
+            carrier: (r.status === 'shipped' || r.status === 'delivered') ? 'BlueDart Express' : null,
+        })));
     } catch (error) {
-        console.error('Orders Error:', error);
-        res.status(500).json({ error: 'Failed to fetch orders' });
+        console.error(`[account/orders] ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch orders.' });
     }
 });
 

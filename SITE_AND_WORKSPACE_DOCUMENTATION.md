@@ -339,17 +339,18 @@ Then handled in workspace by:
 
 ## User And Auth Notes
 
-### Default Internal Logins
+### First-Run Setup
 
-- Core Admin:
-  - `admin@electava.com`
-  - `Electava@2025`
-- Service Team:
-  - `service.team@electava.com`
-  - `Electava@2025`
-- Vendor:
-  - `vendor1@electava.com`
-  - `Electava@2025`
+Default credentials are **not** seeded in the database. On first deployment, run:
+
+```
+node API/scripts/setup-admin.js
+```
+
+This creates a core_admin account with a randomly generated password (shown once).
+See `deployment/SETUP.md` for full instructions.
+
+> **Never commit real passwords or credentials to the repository.**
 
 ### Dashboard Routing
 

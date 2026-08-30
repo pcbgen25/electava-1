@@ -19,7 +19,7 @@ $replySubject  = $_POST['reply_subject'] ?? '';
 $emailSubject  = trim($_POST['email_subject'] ?? '');
 $replyBody     = trim($_POST['reply_body'] ?? '');
 $postStatus    = $_POST['post_status'] ?? 'replied';
-$ccEmail       = trim($_POST['cc_email'] ?? '');
+$ccEmail       = str_replace(["\r", "\n"], '', trim($_POST['cc_email'] ?? ''));
 
 // Validate required fields
 if (!$tokenId || !$customerEmail || !$emailSubject || !$replyBody) {

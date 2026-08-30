@@ -10,15 +10,14 @@ export default function AccountDashboard() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const stored = window.localStorage.getItem('electava-marketplace-user');
-        let userId = null;
-        if (stored) {
-          const user = JSON.parse(stored);
-          if (user.id && !isNaN(parseInt(user.id))) userId = parseInt(user.id);
-        }
-        if (!userId) { setLoading(false); return; }
-        const res = await fetch(`http://localhost:5000/api/account/orders?userId=${userId}`);
-        if (!res.ok) throw new Error('Failed to fetch orders');
+        const token = window.localStorage.getItem('electava-marketplace-token');
+        if (!token) { setLoading(false); return; }
+
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:5000';
+        const res = await fetch(`${apiBase}/api/account/orders`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!res.ok) { setLoading(false); return; }
         const data = await res.json();
         // show only the latest 3 orders on the dashboard
         setRecentOrders(data.slice(0, 3));
@@ -28,7 +27,7 @@ export default function AccountDashboard() {
         setLoading(false);
       }
     };
-    
+
     fetchOrders();
   }, []);
 

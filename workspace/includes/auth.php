@@ -1,22 +1,35 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
-    $session_path = __DIR__ . '/../sessions';
+    // Store sessions outside the webroot so they are not accessible via HTTP
+    $session_path = sys_get_temp_dir() . '/electava_sessions';
     if (!is_dir($session_path)) {
-        mkdir($session_path, 0777, true);
+        mkdir($session_path, 0700, true);
     }
     session_save_path($session_path);
+
+    // Harden session cookies
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    ini_set('session.use_strict_mode', 1);
+    ini_set('session.use_only_cookies', 1);
+
     session_start();
 }
 
 require_once __DIR__ . '/db.php';
 
 function isLoggedIn() {
-    return isset($_SESSION['user_id']);
+    return isset($_SESSION['user_id']) && is_int((int)$_SESSION['user_id']);
 }
 
 function requireLogin() {
     if (!isLoggedIn()) {
-        header("Location: /login.php");
+        header('Location: /login.php');
         exit;
     }
 }
@@ -26,7 +39,8 @@ function requireRole($roles) {
     if (!is_array($roles)) {
         $roles = [$roles];
     }
-    if (!in_array($_SESSION['role'], $roles)) {
+    // Strict type comparison to prevent type-juggling bypass
+    if (!in_array($_SESSION['role'], $roles, true)) {
         http_response_code(403);
         die('<div style="text-align:center;padding:80px;font-family:Inter,sans-serif;background:#0f172a;color:#f8fafc;min-height:100vh;">
             <h1 style="font-size:48px;color:#ef4444;">403</h1>

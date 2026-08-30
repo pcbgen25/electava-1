@@ -5,40 +5,61 @@ require_once 'includes/auth.php';
 $error = '';
 
 if (isLoggedIn()) {
-    header("Location: " . getDashboardUrl($_SESSION['role']));
+    header('Location: ' . getDashboardUrl($_SESSION['role']));
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $login = trim($_POST['login'] ?? '');
-    // Allow login by username OR email
-    $stmt = $pdo->prepare('SELECT id, email, username, password_hash, full_name, role, domain_id, status, force_password_change FROM users WHERE username = ? OR email = ?');
-    $stmt->execute([$login, $login]);
-    $user = $stmt->fetch();
-    $password = $_POST['password'] ?? '';
+    $login    = trim($_POST['login']    ?? '');
+    $password = trim($_POST['password'] ?? '');
 
-    if ($user && password_verify($password, $user['password_hash'])) {
-        if ($user['status'] !== 'active') {
-            $error = 'Your account has been disabled. Contact your administrator.';
+    // Generic validation — do not reveal whether login or password is wrong
+    if ($login === '' || $password === '') {
+        $error = 'Please enter your credentials.';
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT id, email, username, password_hash, full_name, role, domain_id, status, force_password_change
+             FROM users WHERE (username = ? OR email = ?) LIMIT 1'
+        );
+        $stmt->execute([$login, $login]);
+        $user = $stmt->fetch();
+
+        // Constant-time comparison even if user not found
+        $dummyHash = '$2y$12$invalidhashfortimingprotectiononly.invalidhash';
+        $hash = $user ? $user['password_hash'] : $dummyHash;
+        $valid = password_verify($password, $hash);
+
+        if (!$valid || !$user) {
+            // Generic error — do not say which field is wrong
+            $error = 'Invalid credentials. Please try again.';
+            if ($user) logLogin($pdo, $user['id'], 'failed');
+        } elseif ($user['status'] !== 'active') {
+            $error = 'Your account is not active. Please contact your administrator.';
             logLogin($pdo, $user['id'], 'failed');
         } else {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['email'] = $user['email'];
-            $_SESSION['full_name'] = $user['full_name'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['domain_id'] = $user['domain_id'];
+            // Regenerate session ID on successful login (prevents session fixation)
+            session_regenerate_id(true);
+
+            $_SESSION['user_id']        = (int)$user['id'];
+            $_SESSION['username']       = $user['username'];
+            $_SESSION['email']          = $user['email'];
+            $_SESSION['full_name']      = $user['full_name'];
+            $_SESSION['role']           = $user['role'];
+            $_SESSION['domain_id']      = $user['domain_id'];
             $_SESSION['allowed_domains'] = [];
 
             logLogin($pdo, $user['id'], 'success');
             logAudit($pdo, 'login', 'user', $user['id'], 'User logged in');
 
-            header("Location: " . getDashboardUrl($user['role']));
+            // Enforce mandatory password change
+            if (!empty($user['force_password_change'])) {
+                header('Location: /change_password.php?required=1');
+                exit;
+            }
+
+            header('Location: ' . getDashboardUrl($user['role']));
             exit;
         }
-    } else {
-        $error = 'Invalid username/email or password.';
-        if ($user) logLogin($pdo, $user['id'], 'failed');
     }
 }
 ?>
@@ -95,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Username or Email</label>
                     <div class="relative">
                         <i class="fa-solid fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 text-sm"></i>
-                        <input type="text" name="login" required autocomplete="username" placeholder="admin@electava.com"
+                        <input type="text" name="login" required autocomplete="username" placeholder="Username or email"
                             class="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all text-sm">
                     </div>
                 </div>

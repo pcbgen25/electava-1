@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $emailSubject = trim((string)($_POST['email_subject'] ?? ''));
         $replyBody = trim((string)($_POST['reply_body'] ?? ''));
         $postStatus = trim((string)($_POST['post_status'] ?? 'replied'));
-        $ccEmail = trim((string)($_POST['cc_email'] ?? ''));
+        $ccEmail = str_replace(["\r", "\n"], '', trim((string)($_POST['cc_email'] ?? '')));
 
         if ($tokenId > 0 && $customerEmail !== '' && $emailSubject !== '' && $replyBody !== '') {
             $headers = "MIME-Version: 1.0\r\n";
