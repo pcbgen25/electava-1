@@ -1,6 +1,6 @@
 <?php
-$pageTitle = 'Employee Profile';
-require_once __DIR__ . '/../includes/header.php';
+// Load DB + auth functions first — BEFORE any HTML output — so redirects work
+require_once __DIR__ . '/../includes/auth.php';
 requireRole('core_admin');
 
 $empId = (int)($_GET['id'] ?? 0);
@@ -8,7 +8,7 @@ if (!$empId) { header('Location: /core_admin/employees.php'); exit; }
 
 $msg = ''; $msgType = 'success';
 
-// ─── POST HANDLERS ────────────────────────────────────────────────────────────
+// ─── POST HANDLERS (must run before any HTML output) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     requireCsrf();
 
@@ -42,7 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $allowedDomains = isset($_POST['allowed_domains']) ? json_encode(array_map('intval', $_POST['allowed_domains'])) : null;
         $pdo->prepare("UPDATE users SET allowed_domains=? WHERE id=?")->execute([$allowedDomains, $empId]);
         logAudit($pdo, 'update_permissions', 'employee', $empId, 'Updated domain permissions');
-        $msg = 'Permissions updated.';
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=permissions&perm_saved=1");
+        exit;
 
     } elseif ($_POST['action'] === 'assign_task') {
         $pdo->prepare("INSERT INTO tasks (title, description, assigned_to, created_by, due_date, priority) VALUES (?,?,?,?,?,?)")
@@ -57,13 +58,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $taskId = $pdo->lastInsertId();
         logAudit($pdo, 'assign_task', 'task', $taskId, "Assigned task to employee #$empId");
         notify($pdo, $empId, 'New Task Assigned', trim($_POST['title']), 'task');
-        $msg = 'Task assigned successfully.';
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=tasks&msg=task_assigned");
+        exit;
 
     } elseif ($_POST['action'] === 'assign_project') {
         $projId = (int)$_POST['project_id'];
         $pdo->prepare("UPDATE projects SET assigned_to=? WHERE id=?")->execute([$empId, $projId]);
         logAudit($pdo, 'assign_project', 'project', $projId, "Assigned project to employee #$empId");
-        $msg = 'Project assigned successfully.';
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=tasks&msg=project_assigned");
+        exit;
 
     } elseif ($_POST['action'] === 'toggle_module') {
         $mid     = (int)$_POST['module_id'];
@@ -77,10 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
 
     } elseif ($_POST['action'] === 'bulk_permissions') {
-        $bulkVal   = (int)$_POST['bulk_value']; // 1=grant all, 0=revoke all
-        $allMods   = $pdo->query("SELECT id FROM modules")->fetchAll();
-        $stmt      = $pdo->prepare("INSERT INTO module_permissions (user_id, module_id, is_enabled) VALUES (?,?,?)
-                                    ON DUPLICATE KEY UPDATE is_enabled = ?");
+        $bulkVal = (int)$_POST['bulk_value'];
+        $allMods = $pdo->query("SELECT id FROM modules")->fetchAll();
+        $stmt    = $pdo->prepare("INSERT INTO module_permissions (user_id, module_id, is_enabled) VALUES (?,?,?)
+                                  ON DUPLICATE KEY UPDATE is_enabled = ?");
         foreach ($allMods as $m) {
             $stmt->execute([$empId, $m['id'], $bulkVal, $bulkVal]);
         }
@@ -99,6 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $msg = 'You cannot delete yourself.'; $msgType = 'error';
     }
 }
+
+// ─── NOW load the full header (outputs HTML) ──────────────────────────────────
+$pageTitle = 'Employee Profile';
+require_once __DIR__ . '/../includes/header.php';
 
 // ─── LOAD EMPLOYEE ─────────────────────────────────────────────────────────────
 $emp = $pdo->prepare("SELECT u.*, d.name as domain_name, c.full_name as created_by_name FROM users u LEFT JOIN domains d ON u.domain_id = d.id LEFT JOIN users c ON u.created_by = c.id WHERE u.id = ?");
