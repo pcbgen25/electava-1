@@ -192,7 +192,6 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
                 <a href="/core_admin/templates.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-clipboard-list w-5 text-center mr-3 text-sm"></i>Task Templates</a>
                 <div class="text-[10px] uppercase text-slate-600 font-semibold tracking-widest mt-5 mb-2 px-3">Monitoring & Tracking</div>
                 <a href="/core_admin/logs.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-shield-halved w-5 text-center mr-3 text-sm"></i>Audit Logs</a>
-                <a href="/core_admin/login_logs.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-right-to-bracket w-5 text-center mr-3 text-sm"></i>Employee Logins</a>
                 <a href="/core_admin/marketplace_tracking.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-globe w-5 text-center mr-3 text-sm"></i>Marketplace Tracking</a>
                 <div class="text-[10px] uppercase text-slate-600 font-semibold tracking-widest mt-5 mb-2 px-3">Marketplace Operations</div>
                 <a href="/core_admin/users.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-user-group w-5 text-center mr-3 text-sm"></i>Users</a>
@@ -200,7 +199,6 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
                 <a href="/core_admin/careers.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-briefcase w-5 text-center mr-3 text-sm"></i>Careers</a>
                 <a href="/core_admin/reports.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-chart-pie w-5 text-center mr-3 text-sm"></i>Reports</a>
                 <div class="text-[10px] uppercase text-slate-600 font-semibold tracking-widest mt-5 mb-2 px-3">System</div>
-                <a href="/core_admin/permissions.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-key w-5 text-center mr-3 text-sm"></i>Permissions</a>
                 <a href="/core_admin/settings.php" class="sidebar-item flex items-center px-3 py-2.5 rounded-lg text-sm text-slate-300"><i class="fa-solid fa-gear w-5 text-center mr-3 text-sm"></i>Settings</a>
 
             <?php elseif ($role === 'admin'): ?>
