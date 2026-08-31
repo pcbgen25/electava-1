@@ -182,6 +182,7 @@ $vendorStmt->execute([$uid]);
 $vendor = $vendorStmt->fetch();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    requireCsrf();
     if (!$vendor) {
         $feedback = 'Vendor profile not found. Please contact an administrator before adding products.';
         $feedbackTone = 'error';

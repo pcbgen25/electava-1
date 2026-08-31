@@ -159,14 +159,15 @@ function hasDomainAccess($domainId) {
     if (!isset($_SESSION['user_id'])) return false;
     if ($_SESSION['role'] === 'core_admin') return true; // Core Admins have global access
     
-    // Check primary domain
-    if (isset($_SESSION['domain_id']) && $_SESSION['domain_id'] == $domainId) {
+    // Check primary domain — strict comparison to prevent type-juggling (e.g. "1" == 1)
+    if (isset($_SESSION['domain_id']) && (int)$_SESSION['domain_id'] === (int)$domainId) {
         return true;
     }
     
-    // Check secondary allowed domains
+    // Check secondary allowed domains — cast to int array for strict comparison
     if (isset($_SESSION['allowed_domains']) && is_array($_SESSION['allowed_domains'])) {
-        if (in_array($domainId, $_SESSION['allowed_domains'])) {
+        $allowedInts = array_map('intval', $_SESSION['allowed_domains']);
+        if (in_array((int)$domainId, $allowedInts, true)) {
             return true;
         }
     }

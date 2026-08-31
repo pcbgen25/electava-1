@@ -7,6 +7,7 @@ $uid = $_SESSION['user_id'];
 $msg = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $taskId = (int)$_POST['task_id'];
     $action = $_POST['approval_action'];
     $comments = $_POST['comments'] ?? '';

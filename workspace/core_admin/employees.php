@@ -7,6 +7,7 @@ $msg = '';
 
 // Handle actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    requireCsrf();
     if ($_POST['action'] === 'create') {
         $email = trim($_POST['email']);
         $username = trim($_POST['username']);
