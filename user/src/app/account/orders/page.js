@@ -3,6 +3,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { FiSearch, FiPackage, FiX } from 'react-icons/fi';
+import { getApiUrl, authFetch } from '@/lib/api';
+import { useMarketplaceAuth } from '@/context/MarketplaceAuthContext';
 
 export default function MyOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -12,6 +14,7 @@ export default function MyOrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const { signOut } = useMarketplaceAuth();
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -19,10 +22,7 @@ export default function MyOrdersPage() {
         const token = window.localStorage.getItem('electava-marketplace-token');
         if (!token) { setLoading(false); return; }
 
-        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:5000';
-        const res = await fetch(`${apiBase}/api/account/orders`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
+        const res = await authFetch(getApiUrl('/account/orders'), {}, signOut);
         if (res.status === 401 || res.status === 403) {
           setError('Session expired. Please sign in again.');
           setLoading(false);
@@ -39,7 +39,8 @@ export default function MyOrdersPage() {
       }
     };
     fetchOrders();
-  }, []);
+  }, [signOut]);
+
 
 
   const filteredOrders = useMemo(() => {

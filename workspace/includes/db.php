@@ -1,6 +1,6 @@
 <?php
 // Load environment variables from workspace/.env if present
-$envFile = __DIR__ . '/../../workspace/.env';
+$envFile = dirname(__DIR__) . '/.env';
 if (!isset($_ENV['DB_HOST']) && file_exists($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         if (strpos(trim($line), '#') === 0) continue;

@@ -59,16 +59,15 @@ async function verifyPassword(password, hash) {
 /** Username deduplication — only ever queries the `users` table (hardcoded) */
 async function getAvailableUsername(baseUsername) {
     let username = baseUsername;
-    let suffix   = 2;
-    while (true) {
+    for (let suffix = 2; suffix <= 100; suffix++) {
         const [rows] = await db.query(
             'SELECT id FROM users WHERE username = ? LIMIT 1',
             [username]
         );
         if (rows.length === 0) return username;
         username = `${baseUsername}${suffix}`;
-        suffix  += 1;
     }
+    return `${baseUsername}_${crypto.randomBytes(3).toString('hex')}`;
 }
 
 // Map a database component row to the frontend mock data structure
@@ -168,6 +167,9 @@ router.post('/auth/register', async (req, res) => {
 
         res.status(201).json({ success: true, message: 'Account created successfully.', token, user });
     } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+            return res.status(409).json({ error: 'An account with this email already exists.' });
+        }
         console.error(`[register] ${error.message}`);
         res.status(500).json({ error: 'Unable to create account right now. Please try again.' });
     }
@@ -249,10 +251,15 @@ router.get('/components/:id', async (req, res) => {
     try {
         let dbId = req.params.id;
         // if they passed 'prod-001', parse out the number
-        if (dbId.startsWith('prod-')) {
-            dbId = parseInt(dbId.split('-')[1], 10);
+        if (typeof dbId === 'string' && dbId.startsWith('prod-')) {
+            dbId = dbId.split('-')[1];
         }
-        
+
+        const numericId = parseInt(dbId, 10);
+        if (!numericId || isNaN(numericId) || numericId <= 0) {
+            return res.status(400).json({ error: 'Invalid component ID.' });
+        }
+
         const query = `
             SELECT 
                 c.*, 
@@ -263,15 +270,15 @@ router.get('/components/:id', async (req, res) => {
             LEFT JOIN manufacturers m ON c.manufacturer_id = m.id
             LEFT JOIN categories cat ON c.category_id = cat.id
             LEFT JOIN categories p_cat ON cat.parent_id = p_cat.id
-            WHERE c.id = ?
+            WHERE c.id = ? AND c.status = 'active'
         `;
-        const [rows] = await db.query(query, [dbId]);
+        const [rows] = await db.query(query, [numericId]);
         if (rows.length === 0) return res.status(404).json({ error: 'Component not found' });
         
         res.json(mapComponent(rows[0]));
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Failed to fetch component details.' });
     }
 });
 
@@ -313,7 +320,7 @@ router.get('/categories', async (req, res) => {
         res.json(parents);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Database error fetching categories' });
+        res.status(500).json({ error: 'Failed to fetch categories.' });
     }
 });
 
@@ -324,7 +331,7 @@ router.get('/manufacturers', async (req, res) => {
         res.json(rows);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Failed to fetch manufacturers.' });
     }
 });
 
@@ -336,7 +343,7 @@ router.post('/tracking', async (req, res) => {
         const browser     = String(req.body.browser     || '').slice(0, 100);
         const pageVisited = String(req.body.pageVisited || '').slice(0, 500);
         // Use socket address only — do NOT trust x-forwarded-for without verified proxy config
-        const ipAddress = req.socket.remoteAddress || '';
+        const ipAddress = req.ip || req.socket.remoteAddress || '';
         const userAgent = String(req.headers['user-agent'] || '').slice(0, 500);
 
         await db.query(
@@ -366,6 +373,14 @@ router.post('/service-token', async (req, res) => {
         }
         if (!serviceType) {
             return res.status(400).json({ error: 'Service type is required.' });
+        }
+
+        const ALLOWED_SERVICES = ['pcb-design', 'assembly', 'component-sourcing', 'testing', 'general-inquiry'];
+        const serviceTypeLower = String(serviceType || '').trim().toLowerCase();
+        if (!serviceTypeLower || !ALLOWED_SERVICES.includes(serviceTypeLower)) {
+            return res.status(400).json({
+                error: `Invalid service type. Must be one of: ${ALLOWED_SERVICES.join(', ')}`
+            });
         }
 
         // Generate unique token with cryptographically secure random bytes + collision retry
@@ -438,7 +453,7 @@ router.get('/account/orders', authenticateToken, async (req, res) => {
         res.json(rows.map(r => ({
             id:           `ELV-SO-${10000 + r.id}`,
             db_id:        r.id,
-            date:         r.created_at ? r.created_at.toISOString().split('T')[0] : 'N/A',
+            date:         r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : 'N/A',
             itemsCount:   r.items_count  || 0,
             itemsSummary: r.items_summary || 'No items',
             total:        parseFloat(r.total) || 0,

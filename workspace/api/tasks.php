@@ -9,20 +9,20 @@ $user_id = $_SESSION['user_id'];
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    if ($role === 'sub_core') {
-        $stmt = $pdo->prepare("SELECT * FROM tasks WHERE created_by = ?");
-        $stmt->execute([$user_id]);
-        echo json_encode($stmt->fetchAll());
+    if (in_array($role, ['core_admin', 'admin'], true)) {
+        $rows = $pdo->query('SELECT * FROM tasks ORDER BY created_at DESC')->fetchAll();
     } elseif ($role === 'employee') {
-        $stmt = $pdo->prepare("SELECT * FROM tasks WHERE assigned_to = ?");
+        $stmt = $pdo->prepare('SELECT * FROM tasks WHERE assigned_to = ? ORDER BY created_at DESC');
         $stmt->execute([$user_id]);
-        echo json_encode($stmt->fetchAll());
+        $rows = $stmt->fetchAll();
     } else {
-        $stmt = $pdo->query("SELECT * FROM tasks");
-        echo json_encode($stmt->fetchAll());
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
     }
+    echo json_encode($rows);
 } elseif ($method === 'POST') {
-    requireRole(['core', 'sub_core']);
+    requireRole(['core_admin', 'admin', 'employee']);
     $data = json_decode(file_get_contents('php://input'), true);
     
     $stmt = $pdo->prepare("INSERT INTO tasks (title, description, assigned_to, created_by, due_date) VALUES (?, ?, ?, ?, ?)");
@@ -35,18 +35,33 @@ if ($method === 'GET') {
     ]);
     echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
 } elseif ($method === 'PUT') {
-    // Employee updating task status
     $data = json_decode(file_get_contents('php://input'), true);
     $task_id = $data['id'] ?? null;
     $status = $data['status'] ?? 'pending';
-    
-    if ($task_id) {
-        $stmt = $pdo->prepare("UPDATE tasks SET status = ? WHERE id = ?");
-        $stmt->execute([$status, $task_id]);
-        echo json_encode(['success' => true]);
-    } else {
-        http_response_code(400);
-        echo json_encode(['error' => 'Missing task ID']);
+
+    $allowedStatuses = ['pending', 'in_progress', 'submitted', 'completed', 'on_hold'];
+    if (!in_array($status, $allowedStatuses, true)) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Invalid status value']);
+        exit;
     }
+
+    if (in_array($role, ['core_admin', 'admin'], true)) {
+        $stmt = $pdo->prepare('UPDATE tasks SET status = ? WHERE id = ?');
+        $stmt->execute([$status, $task_id]);
+    } elseif ($role === 'employee') {
+        $stmt = $pdo->prepare('UPDATE tasks SET status = ? WHERE id = ? AND assigned_to = ?');
+        $stmt->execute([$status, $task_id, $user_id]);
+        if ($stmt->rowCount() === 0) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Task not found or not assigned to you']);
+            exit;
+        }
+    } else {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    echo json_encode(['success' => true]);
 }
 ?>

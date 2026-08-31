@@ -10,8 +10,24 @@ if (isLoggedIn()) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $login    = trim($_POST['login']    ?? '');
     $password = trim($_POST['password'] ?? '');
+
+    // Rate limiting: max 5 failed attempts per IP per 15 minutes
+    $ipAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+    $rateStmt = $pdo->prepare("
+        SELECT COUNT(*) FROM login_logs
+        WHERE ip_address = ? AND status = 'failed'
+        AND created_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+    ");
+    $rateStmt->execute([$ipAddr]);
+    $recentFails = (int)$rateStmt->fetchColumn();
+    if ($recentFails >= 5) {
+        $error = 'Too many failed login attempts. Please wait 15 minutes before trying again.';
+        // Skip the rest of login processing
+        goto show_form;
+    }
 
     // Generic validation — do not reveal whether login or password is wrong
     if ($login === '' || $password === '') {
@@ -62,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+show_form:
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -112,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="login.php" class="space-y-5">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Username or Email</label>
                     <div class="relative">

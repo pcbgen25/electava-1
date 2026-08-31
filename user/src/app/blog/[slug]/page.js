@@ -77,9 +77,18 @@ export default function BlogPostPage({ params }) {
 
         <div className="container">
           <div className="blog-post-content-wrapper">
-            <div 
+            {/* TODO: Install isomorphic-dompurify for full XSS protection:
+                npm install isomorphic-dompurify
+                Then: import DOMPurify from 'isomorphic-dompurify';
+                And:  const sanitized = DOMPurify.sanitize(post.content || '');
+            */}
+            <div
               className="blog-post-content"
-              dangerouslySetInnerHTML={{ __html: post.content }}
+              dangerouslySetInnerHTML={{
+                __html: (post.content || '')
+                  .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                  .replace(/on\w+\s*=/gi, 'data-removed='),
+              }}
             />
             
             <div className="blog-post-footer">

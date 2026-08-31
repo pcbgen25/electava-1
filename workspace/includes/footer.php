@@ -86,6 +86,16 @@
         });
 
         // Toast notification system
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function showToast(message, type = 'success') {
             const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
             const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
@@ -93,7 +103,7 @@
             const toast = document.createElement('div');
             toast.className = 'fixed top-4 right-4 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium';
             toast.style.cssText = `background:${isLightTheme ? 'rgba(255,255,255,0.96)' : 'rgba(15,23,42,0.95)'};color:${isLightTheme ? '#0f172a' : '#f8fafc'};border:1px solid ${colors[type]}40;backdrop-filter:blur(12px);animation:fadeIn 0.3s ease`;
-            toast.innerHTML = `<i class="fa-solid ${icons[type]}" style="color:${colors[type]}"></i><span>${message}</span>`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type]}" style="color:${colors[type]}"></i><span>${escHtml(message)}</span>`;
             document.body.appendChild(toast);
             setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
         }

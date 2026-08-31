@@ -11,8 +11,8 @@ const db  = require('../config/db');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!JWT_SECRET) {
-    console.error('[FATAL] JWT_SECRET environment variable is not set. Refusing to start.');
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    console.error('[FATAL] JWT_SECRET must be at least 32 characters. Refusing to start.');
     process.exit(1);
 }
 
@@ -32,7 +32,10 @@ async function authenticateToken(req, res, next) {
 
     let payload;
     try {
-        payload = jwt.verify(token, JWT_SECRET);
+        payload = jwt.verify(token, JWT_SECRET, {
+            algorithms: ['HS256'],
+            issuer: 'electava-api'
+        });
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
             return res.status(401).json({ error: 'Session expired. Please sign in again.' });

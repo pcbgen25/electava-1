@@ -16,7 +16,9 @@ error_output.txt
 # Environment files
 API/.env
 user/.env
+user/.env.local
 workspace/.env
+**/.env.local
 
 # Build / package output
 dist/

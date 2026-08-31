@@ -5,9 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiGrid, FiList, FiFilter } from 'react-icons/fi';
 import ProductCard from '@/components/ProductCard/ProductCard';
+import { getApiUrl } from '@/lib/api';
 import './products.css';
-
-const API_URL = 'http://127.0.0.1:5000/api';
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -20,15 +19,16 @@ export default function ProductsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API_URL}/components`).then(r => r.json()).catch(() => []),
-      fetch(`${API_URL}/categories`).then(r => r.json()).catch(() => []),
-      fetch(`${API_URL}/manufacturers`).then(r => r.json()).catch(() => []),
+      fetch(getApiUrl('/components')).then(r => r.json()).catch(() => []),
+      fetch(getApiUrl('/categories')).then(r => r.json()).catch(() => []),
+      fetch(getApiUrl('/manufacturers')).then(r => r.json()).catch(() => []),
     ]).then(([prodData, catData, manData]) => {
       setProducts(Array.isArray(prodData) ? prodData : []);
       setCategories(Array.isArray(catData) ? catData : []);
       setManufacturers(Array.isArray(manData) ? manData.map(m => m.name) : []);
     });
   }, []);
+
 
   const getCategoryById = (id) => categories.find(c => c.id === id);
 

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { FiSend, FiShield } from 'react-icons/fi';
+import { getApiUrl } from '@/lib/api';
+
 
 const services = [
   'PCB Design (Idea to Gerber)',
@@ -53,7 +55,7 @@ export default function QuotationRequestForm() {
     event.preventDefault();
     setIsSubmitting(true);
     try {
-      const response = await fetch('http://localhost:5000/api/service-token', {
+      const response = await fetch(getApiUrl('/service-token'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

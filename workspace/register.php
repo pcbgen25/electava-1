@@ -12,12 +12,15 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $fullName = trim($_POST['full_name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
-    $role = $_POST['role'] ?? 'vendor';
+    // Public registration only allows vendor accounts — employees provisioned by core admin only
+    $role = 'vendor';
+    $status = 'inactive'; // Requires admin approval
 
     // Validate
     if (empty($fullName) || empty($email) || empty($username) || empty($password)) {
@@ -28,18 +31,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Password must be at least 8 characters.';
     } elseif ($password !== $confirmPassword) {
         $error = 'Passwords do not match.';
-    } elseif (!in_array($role, ['vendor', 'employee'])) {
-        $error = 'Invalid account type selected.';
     } else {
         // Check for existing email/username
-        $check = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE email = ? OR username = ?");
+        $check = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ? OR username = ?");
         $check->execute([$email, $username]);
         if ($check->fetchColumn() > 0) {
             $error = 'An account with this email or username already exists.';
         } else {
             $hash = password_hash($password, PASSWORD_BCRYPT);
-            $stmt = $pdo->prepare("INSERT INTO employees (email, username, password, full_name, role, is_active, force_password_change) VALUES (?,?,?,?,?,1,0)");
-            $stmt->execute([$email, $username, $hash, $fullName, $role]);
+            $stmt = $pdo->prepare("INSERT INTO users (email, username, password_hash, full_name, role, status, force_password_change) VALUES (?,?,?,?,?,?,0)");
+            $stmt->execute([$email, $username, $hash, $fullName, $role, $status]);
             $newUserId = $pdo->lastInsertId();
 
             // If vendor, create vendor profile
@@ -108,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="register.php" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Full Name</label>
                     <div class="relative">

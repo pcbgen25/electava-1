@@ -45,7 +45,7 @@ app.use(cors({
     origin: (origin, cb) => {
         // Allow requests with no origin (e.g. server-to-server, curl in dev)
         if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-        return cb(new Error(`CORS: origin ${origin} not allowed`));
+        return cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -82,8 +82,6 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login',          authLimiter);
 app.use('/api/auth/register',       authLimiter);
-app.use('/api/auth/forgot-password', authLimiter);
-app.use('/api/auth/reset-password',  authLimiter);
 
 const writeLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,
@@ -100,7 +98,7 @@ const apiRoutes = require('./routes/api');
 app.use('/api', apiRoutes);
 
 // ─── Health check (no sensitive info) ────────────────────────────────────────
-app.get('/', (_req, res) => {
+app.get(['/', '/health'], (_req, res) => {
     res.json({ status: 'ok' });
 });
 
@@ -112,9 +110,14 @@ app.use((_req, res) => {
 // ─── Centralized error handler ────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, _next) => {
-    console.error(`[${req.id}] Unhandled error:`, err);
-    // Never expose internal error details to clients
-    res.status(500).json({ error: 'Internal server error.' });
+    const statusCode = err.status || err.statusCode || 500;
+    if (statusCode >= 500) {
+        console.error(`[${req.id || 'unknown'}] Unhandled error:`, err.message);
+    }
+    const message = statusCode < 500
+        ? (err.message || 'Invalid request.')
+        : 'Internal server error.';
+    res.status(statusCode).json({ error: message });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

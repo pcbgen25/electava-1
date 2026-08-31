@@ -7,16 +7,17 @@ $msg = '';
 $msgType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     try {
         $currentPassword = (string) ($_POST['current_password'] ?? '');
         $newPassword = (string) ($_POST['new_password'] ?? '');
         $confirmPassword = (string) ($_POST['confirm_password'] ?? '');
 
-        $stmt = $pdo->prepare("SELECT password FROM employees WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
         $stmt->execute([$uid]);
         $user = $stmt->fetch();
 
-        if (!$user || !password_verify($currentPassword, $user['password'])) {
+        if (!$user || !password_verify($currentPassword, $user['password_hash'])) {
             throw new RuntimeException('Current password is not correct.');
         }
 
@@ -28,12 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('New password and confirmation do not match.');
         }
 
-        if (password_verify($newPassword, $user['password'])) {
+        if (password_verify($newPassword, $user['password_hash'])) {
             throw new RuntimeException('New password must be different from your current password.');
         }
 
         $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
-        $update = $pdo->prepare("UPDATE employees SET password = ?, force_password_change = 0 WHERE id = ?");
+        $update = $pdo->prepare("UPDATE users SET password_hash = ?, force_password_change = 0 WHERE id = ?");
         $update->execute([$passwordHash, $uid]);
 
         logAudit($pdo, 'change_password', 'employee', $uid, 'User changed their own workspace password');
@@ -69,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <form method="POST" class="space-y-5">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <div>
                 <label class="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Current Password</label>
                 <input type="password" name="current_password" autocomplete="current-password" class="input-field w-full px-3 py-2.5 rounded-xl text-sm" required>

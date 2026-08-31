@@ -191,6 +191,7 @@ $domainsJson = json_encode($domains);
             <button onclick="document.getElementById('createModal').classList.add('hidden')" class="text-slate-500 hover:text-white text-lg"><i class="fa-solid fa-times"></i></button>
         </div>
         <form method="POST" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <input type="hidden" name="action" value="create">
             <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-xs text-slate-400 mb-1.5">Full Name</label><input type="text" name="full_name" required class="input-field w-full px-3 py-2 rounded-lg text-sm"></div>
@@ -248,6 +249,7 @@ $domainsJson = json_encode($domains);
 <!-- ===== Employee Detail Modal (JavaScript) ===== -->
 <script>
 const allDomains = <?= $domainsJson ?>;
+const csrfToken = <?= json_encode(generateCsrfToken()) ?>;
 
 function openEmployeeDetail(emp, stats) {
     // Remove any existing modal
@@ -261,7 +263,7 @@ function openEmployeeDetail(emp, stats) {
     // Build domain options
     let domainOpts = '<option value="">— None —</option>';
     allDomains.forEach(d => {
-        domainOpts += `<option value="${d.id}" ${emp.domain_id == d.id ? 'selected' : ''}>${d.name}</option>`;
+        domainOpts += `<option value="${d.id}" ${emp.domain_id == d.id ? 'selected' : ''}>${escHtml(d.name)}</option>`;
     });
 
     // Admin subordinate section
@@ -289,14 +291,14 @@ function openEmployeeDetail(emp, stats) {
                 <div class="flex items-start justify-between">
                     <div class="flex items-center gap-4">
                         <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-xl font-bold text-white shadow-xl shadow-emerald-500/20">
-                            ${(emp.full_name || emp.username).charAt(0).toUpperCase()}
+                            ${(escHtml(emp.full_name) || escHtml(emp.username)).charAt(0).toUpperCase()}
                         </div>
                         <div>
-                            <h2 class="text-xl font-bold text-white">${emp.full_name || emp.username} ${emp.job_title ? '<span class="text-sm font-normal text-slate-400 ml-2 border-l border-slate-700 pl-2">' + emp.job_title + '</span>' : ''}</h2>
-                            <p class="text-sm text-slate-400">@${emp.username} · ${emp.email} ${emp.phone ? '· ' + emp.phone : ''}</p>
+                            <h2 class="text-xl font-bold text-white">${escHtml(emp.full_name) || escHtml(emp.username)} ${emp.job_title ? '<span class="text-sm font-normal text-slate-400 ml-2 border-l border-slate-700 pl-2">' + escHtml(emp.job_title) + '</span>' : ''}</h2>
+                            <p class="text-sm text-slate-400">@${escHtml(emp.username)} · ${escHtml(emp.email)} ${emp.phone ? '· ' + escHtml(emp.phone) : ''}</p>
                             <div class="flex items-center gap-2 mt-2">
                                 <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-widest uppercase ${emp.status === 'active' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'}">${emp.status === 'active' ? 'Active' : 'Disabled'}</span>
-                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-widest uppercase bg-slate-700/50 text-slate-300 border border-slate-600/30">${emp.role.replace('_',' ')}</span>
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-widest uppercase bg-slate-700/50 text-slate-300 border border-slate-600/30">${escHtml(emp.role.replace('_',' '))}</span>
                             </div>
                         </div>
                     </div>
@@ -345,7 +347,7 @@ function openEmployeeDetail(emp, stats) {
                     </div>
                     <div class="bg-slate-800/30 p-3 rounded-lg">
                         <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Domain</div>
-                        <div class="text-slate-200">${emp.domain_name || '— Unassigned —'}</div>
+                        <div class="text-slate-200">${escHtml(emp.domain_name) || '— Unassigned —'}</div>
                     </div>
                     <div class="bg-slate-800/30 p-3 rounded-lg">
                         <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Created</div>
@@ -359,7 +361,7 @@ function openEmployeeDetail(emp, stats) {
                 ${emp.notes ? `
                 <div class="mt-4 bg-slate-800/30 p-4 rounded-xl border border-slate-700/50 text-sm">
                     <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-semibold">Additional Notes</div>
-                    <div class="text-slate-300 whitespace-pre-wrap leading-relaxed">${emp.notes}</div>
+                    <div class="text-slate-300 whitespace-pre-wrap leading-relaxed">${escHtml(emp.notes)}</div>
                 </div>` : ''}
             </div>
 
@@ -371,20 +373,21 @@ function openEmployeeDetail(emp, stats) {
                 </button>
                 <div id="editSection" class="hidden mt-4">
                     <form method="POST" class="space-y-3">
+                        <input type="hidden" name="csrf_token" value="${csrfToken}">
                         <input type="hidden" name="action" value="edit">
                         <input type="hidden" name="user_id" value="${emp.id}">
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-[10px] text-slate-500 mb-1 uppercase tracking-widest">Full Name</label>
-                                <input type="text" name="full_name" value="${emp.full_name || ''}" required class="input-field w-full px-3 py-2 rounded-lg text-sm">
+                                <input type="text" name="full_name" value="${escHtml(emp.full_name) || ''}" required class="input-field w-full px-3 py-2 rounded-lg text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] text-slate-500 mb-1 uppercase tracking-widest">Email</label>
-                                <input type="email" name="email" value="${emp.email}" required class="input-field w-full px-3 py-2 rounded-lg text-sm">
+                                <input type="email" name="email" value="${escHtml(emp.email)}" required class="input-field w-full px-3 py-2 rounded-lg text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] text-slate-500 mb-1 uppercase tracking-widest">Phone</label>
-                                <input type="text" name="phone" value="${emp.phone || ''}" class="input-field w-full px-3 py-2 rounded-lg text-sm">
+                                <input type="text" name="phone" value="${escHtml(emp.phone) || ''}" class="input-field w-full px-3 py-2 rounded-lg text-sm">
                             </div>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
@@ -409,7 +412,7 @@ function openEmployeeDetail(emp, stats) {
                                 ${allDomains.map(d => {
                                     let allowed = [];
                                     try { allowed = emp.allowed_domains ? JSON.parse(emp.allowed_domains) : []; } catch(e){}
-                                    return '<option value="' + d.id + '" ' + (allowed.includes(d.id.toString()) || allowed.includes(d.id) ? 'selected' : '') + '>' + d.name + '</option>';
+                                    return '<option value="' + d.id + '" ' + (allowed.includes(d.id.toString()) || allowed.includes(d.id) ? 'selected' : '') + '>' + escHtml(d.name) + '</option>';
                                 }).join('')}
                             </select>
                             <div class="text-[10px] text-slate-500 mt-1">Hold Ctrl (or Cmd) to select multiple.</div>
@@ -417,11 +420,11 @@ function openEmployeeDetail(emp, stats) {
                         <div class="grid grid-cols-2 gap-3 mt-3">
                             <div class="col-span-2">
                                 <label class="block text-[10px] text-slate-500 mb-1 uppercase tracking-widest">Job Title</label>
-                                <input type="text" name="job_title" value="${emp.job_title || ''}" class="input-field w-full px-3 py-2 rounded-lg text-sm">
+                                <input type="text" name="job_title" value="${escHtml(emp.job_title) || ''}" class="input-field w-full px-3 py-2 rounded-lg text-sm">
                             </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] text-slate-500 mb-1 uppercase tracking-widest">Notes</label>
-                                <textarea name="notes" rows="2" class="input-field w-full px-3 py-2 rounded-lg text-sm">${emp.notes || ''}</textarea>
+                                <textarea name="notes" rows="2" class="input-field w-full px-3 py-2 rounded-lg text-sm">${escHtml(emp.notes) || ''}</textarea>
                             </div>
                         </div>
                         <div class="flex justify-end pt-1">
@@ -436,6 +439,7 @@ function openEmployeeDetail(emp, stats) {
                 <h3 class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-4">Quick Actions</h3>
                 <div class="grid grid-cols-3 gap-3">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="${csrfToken}">
                         <input type="hidden" name="action" value="reset_password">
                         <input type="hidden" name="user_id" value="${emp.id}">
                         <button type="submit" class="w-full bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40 py-3 rounded-xl text-xs transition flex flex-col items-center gap-1.5 font-medium">
@@ -443,6 +447,7 @@ function openEmployeeDetail(emp, stats) {
                         </button>
                     </form>
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="${csrfToken}">
                         <input type="hidden" name="action" value="toggle">
                         <input type="hidden" name="user_id" value="${emp.id}">
                         <button type="submit" class="w-full ${emp.status === 'active' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/40' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40'} border py-3 rounded-xl text-xs transition flex flex-col items-center gap-1.5 font-medium">
@@ -451,6 +456,7 @@ function openEmployeeDetail(emp, stats) {
                     </form>
                     ${!isSelf ? `
                     <form method="POST" onsubmit="return confirm('Permanently delete this employee? This cannot be undone.')">
+                        <input type="hidden" name="csrf_token" value="${csrfToken}">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="user_id" value="${emp.id}">
                         <button type="submit" class="w-full bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40 py-3 rounded-xl text-xs transition flex flex-col items-center gap-1.5 font-medium">

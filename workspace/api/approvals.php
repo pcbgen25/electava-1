@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'POST') {
-    requireRole(['core', 'sub_core']);
+    requireRole(['core_admin', 'admin']);
     $data = json_decode(file_get_contents('php://input'), true);
     $task_id = $data['task_id'] ?? null;
     $comments = $data['comments'] ?? '';
@@ -25,7 +25,13 @@ if ($method === 'POST') {
         echo json_encode(['error' => 'Task ID required']);
     }
 } else {
-    $stmt = $pdo->query("SELECT * FROM task_approvals LIMIT 50");
-    echo json_encode($stmt->fetchAll());
+    $role = $_SESSION['role'] ?? '';
+    if (in_array($role, ['core_admin', 'admin'], true)) {
+        $stmt = $pdo->query("SELECT * FROM task_approvals LIMIT 50");
+        echo json_encode($stmt->fetchAll());
+    } else {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+    }
 }
 ?>

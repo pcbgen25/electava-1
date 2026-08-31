@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { getApiUrl } from '@/lib/api';
+
 
 export default function ClientTracker() {
   const pathname = usePathname();
@@ -18,7 +20,7 @@ export default function ClientTracker() {
     if (!trackedPages.current.has(pathname)) {
       // Small delay to ensure render
       setTimeout(() => {
-        fetch('http://localhost:5000/api/tracking', {
+        fetch(getApiUrl('/tracking'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

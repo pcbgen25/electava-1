@@ -3,9 +3,20 @@ $pageTitle = 'Marketplace Users';
 require_once __DIR__ . '/../includes/header.php';
 requireRole(['core_admin', 'admin']);
 
+// API endpoint for fetching user tokens on demand
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['api_tokens_for_email'])) {
+    header('Content-Type: application/json');
+    $email = trim($_GET['api_tokens_for_email']);
+    $stmt = $pdo->prepare("SELECT * FROM service_tokens WHERE user_email = ? ORDER BY created_at DESC");
+    $stmt->execute([$email]);
+    echo json_encode($stmt->fetchAll());
+    exit;
+}
+
 // Handle reply submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'reply_token') {
+        requireCsrf();
         $tokenId = (int)$_POST['token_id'];
         $tokenNumber = trim($_POST['token_number']);
         $customerEmail = trim($_POST['customer_email']);
@@ -185,26 +196,19 @@ $totalPageViews = $pdo->query("SELECT COUNT(*) FROM marketplace_tracking")->fetc
 </div>
 
 <!-- ===================================================== -->
-<!-- User Detail Modal (fetches tokens via inline PHP data) -->
+<!-- User Detail Modal (fetches tokens via API) -->
 <!-- ===================================================== -->
-<?php
-// Pre-fetch all tokens grouped by email for JavaScript
-$allTokens = $pdo->query("SELECT * FROM service_tokens ORDER BY created_at DESC")->fetchAll();
-$tokensByEmail = [];
-foreach ($allTokens as $tk) {
-    $tokensByEmail[$tk['user_email']][] = $tk;
-}
-$tokensByEmailJson = json_encode($tokensByEmail);
-?>
-
 <script>
-const tokensByEmail = <?= $tokensByEmailJson ?>;
+const csrfToken = <?= json_encode(generateCsrfToken()) ?>;
 
-function openUserDetail(email) {
+async function openUserDetail(email) {
     const existing = document.getElementById('userDetailModal');
     if (existing) existing.remove();
 
-    const tokens = tokensByEmail[email] || [];
+    // Fetch tokens
+    const response = await fetch('users.php?api_tokens_for_email=' + encodeURIComponent(email));
+    const tokens = await response.json();
+
     const totalRequests = tokens.length;
     const pendingCount = tokens.filter(t => t.status === 'pending').length;
     const repliedCount = tokens.filter(t => t.status === 'replied' || t.status === 'completed').length;
@@ -220,9 +224,9 @@ function openUserDetail(email) {
             const d = JSON.parse(t.details);
             for (let k in d) {
                 if (k === 'ndaAgreed') continue;
-                details += `<strong>${k.replace(/([A-Z])/g, ' $1')}:</strong> ${d[k] || '—'}<br>`;
+                details += `<strong>${escHtml(k.replace(/([A-Z])/g, ' $1'))}:</strong> ${escHtml(d[k]) || '—'}<br>`;
             }
-        } catch(e) { details = t.details || '—'; }
+        } catch(e) { details = escHtml(t.details) || '—'; }
 
         const statusColors = {
             'pending': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
@@ -237,19 +241,19 @@ function openUserDetail(email) {
         <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 hover:border-emerald-500/20 transition">
             <div class="flex items-start justify-between mb-3">
                 <div>
-                    <span class="text-emerald-400 font-mono font-bold text-sm tracking-wider">${t.token_number}</span>
-                    <span class="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${sc}">${t.status.replace('_',' ').toUpperCase()}</span>
+                    <span class="text-emerald-400 font-mono font-bold text-sm tracking-wider">${escHtml(t.token_number)}</span>
+                    <span class="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${sc}">${escHtml(t.status.replace('_',' ').toUpperCase())}</span>
                 </div>
                 <span class="text-[10px] text-slate-500">${new Date(t.created_at).toLocaleDateString('en-US', {year:'numeric',month:'short',day:'numeric'})}</span>
             </div>
             <div class="text-xs text-slate-300 mb-2">
-                <span class="text-slate-500">Service:</span> <span class="text-white font-medium capitalize">${t.service_type.replace(/-/g, ' ')}</span>
+                <span class="text-slate-500">Service:</span> <span class="text-white font-medium capitalize">${escHtml(t.service_type.replace(/-/g, ' '))}</span>
             </div>
             <div class="text-xs text-slate-400 mb-3 p-2.5 bg-slate-900/40 rounded-lg max-h-24 overflow-y-auto custom-scrollbar leading-relaxed">
                 ${details}
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="openReplyForm('${t.id}', '${t.token_number}', '${email}', '${t.service_type}')" class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-emerald-600/40 transition font-medium">
+                <button onclick="openReplyForm('${t.id}', '${escHtml(t.token_number)}', '${escHtml(email)}', '${escHtml(t.service_type)}')" class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-emerald-600/40 transition font-medium">
                     <i class="fa-solid fa-reply mr-1"></i>Reply & Send Mail
                 </button>
                 <a href="service_tokens.php?token=${encodeURIComponent(t.token_number)}" class="text-xs text-blue-400 hover:text-blue-300 hover:underline">
@@ -268,10 +272,10 @@ function openUserDetail(email) {
                 <div class="flex items-start justify-between">
                     <div class="flex items-center gap-4">
                         <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xl font-bold text-white shadow-xl shadow-purple-500/20">
-                            ${email.charAt(0).toUpperCase()}
+                            ${escHtml(email).charAt(0).toUpperCase()}
                         </div>
                         <div>
-                            <h2 class="text-xl font-bold text-white">${email}</h2>
+                            <h2 class="text-xl font-bold text-white">${escHtml(email)}</h2>
                             <p class="text-sm text-slate-400 mt-0.5">Marketplace Customer</p>
                             <div class="flex items-center gap-2 mt-2">
                                 <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/15 text-purple-400 border border-purple-500/25">${totalRequests} Request${totalRequests !== 1 ? 's' : ''}</span>
@@ -297,7 +301,7 @@ function openUserDetail(email) {
                         <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">Service Types</div>
                     </div>
                     <div class="bg-slate-800/50 p-3.5 rounded-xl text-center">
-                        <div class="text-lg font-bold text-slate-300">${serviceTypes.map(s => s.replace(/-/g,' ')).join(', ') || '—'}</div>
+                        <div class="text-lg font-bold text-slate-300">${escHtml(serviceTypes.map(s => s.replace(/-/g,' ')).join(', ')) || '—'}</div>
                         <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">Services Used</div>
                     </div>
                 </div>
@@ -343,14 +347,15 @@ function openReplyForm(tokenId, tokenNumber, customerEmail, serviceType) {
                 </div>
             </div>
             <form method="POST" class="p-6 space-y-4">
+                <input type="hidden" name="csrf_token" value="${csrfToken}">
                 <input type="hidden" name="action" value="reply_token">
-                <input type="hidden" name="token_id" value="${tokenId}">
-                <input type="hidden" name="token_number" value="${tokenNumber}">
-                <input type="hidden" name="customer_email" value="${customerEmail}">
+                <input type="hidden" name="token_id" value="${escHtml(tokenId)}">
+                <input type="hidden" name="token_number" value="${escHtml(tokenNumber)}">
+                <input type="hidden" name="customer_email" value="${escHtml(customerEmail)}">
                 
                 <div>
                     <label class="block text-[10px] text-slate-500 mb-1.5 uppercase tracking-widest">Email Subject</label>
-                    <input type="text" name="email_subject" value="${tpl.subject}" required class="input-field w-full px-3 py-2.5 rounded-xl text-sm">
+                    <input type="text" name="email_subject" value="${escHtml(tpl.subject)}" required class="input-field w-full px-3 py-2.5 rounded-xl text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] text-slate-500 mb-1.5 uppercase tracking-widest">Reply Message</label>

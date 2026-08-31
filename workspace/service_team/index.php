@@ -22,7 +22,7 @@ $repliedTokens = (int)$pdo->query("SELECT COUNT(*) FROM service_tokens WHERE sta
 $recentRequests = $pdo->query("
     SELECT sr.*, e.full_name AS assignee_name
     FROM service_requests sr
-    LEFT JOIN employees e ON e.id = sr.assigned_to
+    LEFT JOIN users e ON e.id = sr.assigned_to
     ORDER BY sr.updated_at DESC, sr.created_at DESC
     LIMIT 6
 ")->fetchAll();
@@ -30,7 +30,7 @@ $recentRequests = $pdo->query("
 $recentTokens = $pdo->query("
     SELECT st.*, e.full_name AS assignee_name
     FROM service_tokens st
-    LEFT JOIN employees e ON e.id = st.assigned_to
+    LEFT JOIN users e ON e.id = st.assigned_to
     ORDER BY st.updated_at DESC, st.created_at DESC
     LIMIT 6
 ")->fetchAll();

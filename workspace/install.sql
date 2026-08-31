@@ -391,7 +391,7 @@ CREATE TABLE IF NOT EXISTS approval_rules (
     domain_id INT DEFAULT NULL,
     action_type VARCHAR(100) NOT NULL,
     requires_approval TINYINT(1) DEFAULT 1,
-    approver_role ENUM('core', 'sub_core') DEFAULT 'sub_core',
+    approver_role ENUM('core_admin', 'admin') DEFAULT 'admin',
     multi_level TINYINT(1) DEFAULT 0,
     description TEXT DEFAULT NULL,
     FOREIGN KEY (domain_id) REFERENCES domains(id) ON DELETE CASCADE

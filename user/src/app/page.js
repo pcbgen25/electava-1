@@ -1,16 +1,16 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import ProductCard from '@/components/ProductCard/ProductCard';
+import { getApiUrl } from '@/lib/api';
 import './home.css';
 
-const API_URL = 'http://127.0.0.1:5000/api';
-
 async function getProducts() {
-  try { const res = await fetch(`${API_URL}/components`, { cache: 'no-store' }); return res.ok ? res.json() : []; } catch(e) { return []; } 
+  try { const res = await fetch(getApiUrl('/components'), { cache: 'no-store' }); return res.ok ? res.json() : []; } catch(e) { return []; } 
 }
 async function getCategories() {
-  try { const res = await fetch(`${API_URL}/categories`, { cache: 'no-store' }); return res.ok ? res.json() : []; } catch(e) { return []; }
+  try { const res = await fetch(getApiUrl('/categories'), { cache: 'no-store' }); return res.ok ? res.json() : []; } catch(e) { return []; }
 }
+
 
 export default async function Home() {
   const products = await getProducts();

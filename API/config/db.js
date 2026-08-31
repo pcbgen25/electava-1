@@ -16,8 +16,9 @@ const pool = mysql.createPool({
     database:         process.env.DB_NAME       || 'electava_workspace',
     waitForConnections: true,
     connectionLimit:  10,
-    queueLimit:       0,
+    queueLimit:       50,
     connectTimeout:   10000,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
     // Enforce parameterized queries (no emulated prepares)
     namedPlaceholders: false,
 });

@@ -23,14 +23,19 @@ const crypto = require('crypto');
 async function main() {
     const db = await mysql.createConnection({
         host:     process.env.DB_HOST || '127.0.0.1',
+        port:     parseInt(process.env.DB_PORT || '3306', 10),
         user:     process.env.DB_USER,
         password: process.env.DB_PASS,
         database: process.env.DB_NAME || 'electava_workspace',
     });
 
+    // Generate random secure credentials — resolved before duplicate check so adminEmail is available
+    const adminEmail   = process.env.ADMIN_EMAIL || 'admin@electava.com';
+
     // Check if admin already exists
     const [existing] = await db.query(
-        "SELECT id FROM users WHERE role = 'core_admin' LIMIT 1"
+        "SELECT id FROM users WHERE role = 'core_admin' OR username = 'admin' OR email = ? LIMIT 1",
+        [adminEmail]
     );
     if (existing.length > 0) {
         console.log('[setup-admin] A core_admin account already exists. Skipping creation.');
@@ -42,7 +47,6 @@ async function main() {
     // Generate random secure credentials
     const tempPassword = crypto.randomBytes(12).toString('base64url');
     const passwordHash = await bcrypt.hash(tempPassword, 12);
-    const adminEmail   = process.env.ADMIN_EMAIL || 'admin@electava.com';
 
     await db.query(
         `INSERT INTO users (email, username, password_hash, full_name, role, status, force_password_change)

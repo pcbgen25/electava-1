@@ -6,7 +6,15 @@ requireRole('employee');
 $uid = (int)$_SESSION['user_id'];
 $msg = '';
 
-$serviceTeamMembers = $pdo->query("SELECT id, full_name, username FROM users WHERE role = 'employee' AND domain_id = 2 AND status = 'active' ORDER BY full_name, username")->fetchAll();
+// Get PCB Services domain ID dynamically
+$domainStmt = $pdo->prepare("SELECT id FROM domains WHERE name = 'PCB Services' LIMIT 1");
+$domainStmt->execute();
+$domainRow = $domainStmt->fetch();
+$pcbDomainId = $domainRow ? (int)$domainRow['id'] : 2; // fallback 2 if not found
+
+$serviceTeamMembers = $pdo->prepare("SELECT id, full_name, username FROM users WHERE role = 'employee' AND domain_id = ? AND status = 'active' ORDER BY full_name, username");
+$serviceTeamMembers->execute([$pcbDomainId]);
+$serviceTeamMembers = $serviceTeamMembers->fetchAll();
 
 function renderTokenDetails(?string $details): string {
     if (!$details) {
@@ -128,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $tokenId = (int)($_POST['token_id'] ?? 0);
         $tokenNumber = trim((string)($_POST['token_number'] ?? ''));
         $customerEmail = trim((string)($_POST['customer_email'] ?? ''));
-        $emailSubject = trim((string)($_POST['email_subject'] ?? ''));
+        $emailSubject = str_replace(["\r", "\n"], '', trim((string)($_POST['email_subject'] ?? '')));
         $replyBody = trim((string)($_POST['reply_body'] ?? ''));
         $postStatus = trim((string)($_POST['post_status'] ?? 'replied'));
         $ccEmail = str_replace(["\r", "\n"], '', trim((string)($_POST['cc_email'] ?? '')));
@@ -269,6 +277,7 @@ $statusOptions = ['pending', 'in_progress', 'replied', 'completed', 'cancelled']
         </div>
 
         <form method="POST" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <input type="hidden" name="action" value="save_token">
             <input type="hidden" name="token_id" value="<?= (int)$token['id'] ?>">
 
@@ -323,6 +332,7 @@ $statusOptions = ['pending', 'in_progress', 'replied', 'completed', 'cancelled']
 
         <?php if ((int)$token['assigned_to'] !== $uid): ?>
         <form method="POST" class="mt-3">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <input type="hidden" name="action" value="take_token">
             <input type="hidden" name="token_id" value="<?= (int)$token['id'] ?>">
             <button type="submit" class="btn-secondary px-4 py-2 rounded-lg text-sm text-slate-300">
@@ -338,6 +348,7 @@ $statusOptions = ['pending', 'in_progress', 'replied', 'completed', 'cancelled']
             </summary>
             <div class="px-4 pb-4">
                 <form method="POST" class="space-y-3">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
                     <input type="hidden" name="action" value="reply_token">
                     <input type="hidden" name="token_id" value="<?= (int)$token['id'] ?>">
                     <input type="hidden" name="token_number" value="<?= htmlspecialchars($token['token_number']) ?>">

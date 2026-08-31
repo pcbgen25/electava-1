@@ -8,6 +8,7 @@ $msg = '';
 $msgType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     try {
         if (($_POST['action'] ?? '') === 'update_profile') {
             $fullName = trim((string) ($_POST['full_name'] ?? ''));
@@ -17,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Full name is required.');
             }
 
-            $stmt = $pdo->prepare("UPDATE employees SET full_name = ?, phone = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET full_name = ?, phone = ? WHERE id = ?");
             $stmt->execute([$fullName, $phone !== '' ? $phone : null, $uid]);
 
             $_SESSION['full_name'] = $fullName;
@@ -29,11 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $newPassword = (string) ($_POST['new_password'] ?? '');
             $confirmPassword = (string) ($_POST['confirm_password'] ?? '');
 
-            $userStmt = $pdo->prepare("SELECT password FROM employees WHERE id = ? LIMIT 1");
+            $userStmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
             $userStmt->execute([$uid]);
             $userRow = $userStmt->fetch();
 
-            if (!$userRow || !password_verify($currentPassword, $userRow['password'])) {
+            if (!$userRow || !password_verify($currentPassword, $userRow['password_hash'])) {
                 throw new RuntimeException('Current password is not correct.');
             }
             if (strlen($newPassword) < 8) {
@@ -44,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE employees SET password = ?, force_password_change = 0 WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, force_password_change = 0 WHERE id = ?");
             $stmt->execute([$passwordHash, $uid]);
 
             logAudit($pdo, 'change_employee_password', 'employee', $uid, 'Employee changed their own password');
@@ -58,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $profileStmt = $pdo->prepare("
     SELECT e.*, d.name AS primary_domain_name
-    FROM employees e
+    FROM users e
     LEFT JOIN domains d ON d.id = e.domain_id
     WHERE e.id = ?
     LIMIT 1
@@ -144,6 +145,7 @@ $completedTasks = (int) $completedTasksStmt->fetchColumn();
             </div>
 
             <form method="POST" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
                 <input type="hidden" name="action" value="update_profile">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -170,6 +172,7 @@ $completedTasks = (int) $completedTasksStmt->fetchColumn();
             </div>
 
             <form method="POST" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
                 <input type="hidden" name="action" value="change_password">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -212,7 +215,7 @@ $completedTasks = (int) $completedTasksStmt->fetchColumn();
                 </div>
                 <div class="flex items-center justify-between gap-3">
                     <span class="text-slate-500">Status</span>
-                    <span class="<?= !empty($employee['is_active']) ? 'text-emerald-400' : 'text-red-400' ?> text-right"><?= !empty($employee['is_active']) ? 'Active' : 'Inactive' ?></span>
+                    <span class="<?= ($employee['status'] === 'active') ? 'text-emerald-400' : 'text-red-400' ?> text-right"><?= ($employee['status'] === 'active') ? 'Active' : 'Inactive' ?></span>
                 </div>
                 <div class="flex items-center justify-between gap-3">
                     <span class="text-slate-500">Joined</span>

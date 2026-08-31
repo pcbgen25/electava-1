@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { getApiUrl, authFetch } from '@/lib/api';
+import { useMarketplaceAuth } from '@/context/MarketplaceAuthContext';
 
 export default function AccountDashboard() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { signOut } = useMarketplaceAuth();
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -13,10 +16,7 @@ export default function AccountDashboard() {
         const token = window.localStorage.getItem('electava-marketplace-token');
         if (!token) { setLoading(false); return; }
 
-        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:5000';
-        const res = await fetch(`${apiBase}/api/account/orders`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
+        const res = await authFetch(getApiUrl('/account/orders'), {}, signOut);
         if (!res.ok) { setLoading(false); return; }
         const data = await res.json();
         // show only the latest 3 orders on the dashboard
@@ -29,7 +29,8 @@ export default function AccountDashboard() {
     };
 
     fetchOrders();
-  }, []);
+  }, [signOut]);
+
 
   return (
     <>

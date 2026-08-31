@@ -6,9 +6,10 @@ requireRole('service_team');
 $uid = (int)$_SESSION['user_id'];
 $msg = '';
 
-$serviceTeamMembers = $pdo->query("SELECT id, full_name, username FROM employees WHERE role = 'service_team' AND is_active = 1 ORDER BY full_name, username")->fetchAll();
+$serviceTeamMembers = $pdo->query("SELECT id, full_name, username FROM users WHERE role != 'vendor' AND status = 'active' ORDER BY full_name, username")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    requireCsrf();
     if ($_POST['action'] === 'take_request') {
         $requestId = (int)($_POST['request_id'] ?? 0);
         if ($requestId > 0) {
@@ -77,7 +78,7 @@ $search = trim((string)($_GET['search'] ?? ''));
 $sql = "
     SELECT sr.*, e.full_name AS assignee_name
     FROM service_requests sr
-    LEFT JOIN employees e ON e.id = sr.assigned_to
+    LEFT JOIN users e ON e.id = sr.assigned_to
     WHERE 1=1
 ";
 $params = [];
@@ -204,6 +205,7 @@ $priorityOptions = ['low', 'medium', 'high', 'urgent'];
         </div>
 
         <form method="POST" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <input type="hidden" name="action" value="save_request">
             <input type="hidden" name="request_id" value="<?= (int)$request['id'] ?>">
 
@@ -273,6 +275,7 @@ $priorityOptions = ['low', 'medium', 'high', 'urgent'];
 
         <?php if ((int)$request['assigned_to'] !== $uid): ?>
         <form method="POST" class="mt-3">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
             <input type="hidden" name="action" value="take_request">
             <input type="hidden" name="request_id" value="<?= (int)$request['id'] ?>">
             <button type="submit" class="btn-secondary px-4 py-2 rounded-lg text-sm text-slate-300">

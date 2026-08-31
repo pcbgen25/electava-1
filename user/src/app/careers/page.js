@@ -10,7 +10,9 @@ import {
   FiUsers,
 } from 'react-icons/fi';
 import CareerApplicationForm from './CareerApplicationForm';
+import { getApiUrl } from '@/lib/api';
 import './careers.css';
+
 
 const perks = [
   {
@@ -37,7 +39,7 @@ const perks = [
 
 async function getCareers() {
   try {
-    const res = await fetch('http://localhost:5000/api/careers', { next: { revalidate: 10 } });
+    const res = await fetch(getApiUrl('/careers'), { next: { revalidate: 10 } });
     if (!res.ok) return [];
     return await res.json();
   } catch (error) {

@@ -5,6 +5,7 @@ requireRole(['core_admin', 'admin']);
 
 // Handle status update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
+    requireCsrf();
     $tokenId = (int)$_POST['token_id'];
     $newStatus = $_POST['new_status'];
     $stmt = $pdo->prepare("UPDATE service_tokens SET status = ? WHERE id = ?");
@@ -92,8 +93,8 @@ $tokens = $stmt->fetchAll();
                     <?= statusBadge($t['status']) ?>
                 </td>
                 <td class="px-5 py-4 text-right flex items-center justify-end gap-2">
-                    <button onclick='viewToken(<?= json_encode($t) ?>)' class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline">View</button>
-                    <button onclick='replyToken(<?= json_encode($t) ?>)' class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg hover:bg-emerald-600/40 transition">
+                    <button onclick='viewToken(<?= htmlspecialchars(json_encode($t), ENT_QUOTES, 'UTF-8') ?>)' class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline">View</button>
+                    <button onclick='replyToken(<?= htmlspecialchars(json_encode($t), ENT_QUOTES, 'UTF-8') ?>)' class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg hover:bg-emerald-600/40 transition">
                         <i class="fa-solid fa-reply mr-1"></i>Reply
                     </button>
                 </td>
@@ -157,10 +158,14 @@ function viewToken(token) {
                     ${detailsStr}
                 </div>
                 <div class="flex gap-2">
-                    <form method="POST" class="flex-1"><input type="hidden" name="token_id" value="${token.id}"><input type="hidden" name="new_status" value="in_progress"><input type="hidden" name="update_status" value="1">
+                    <form method="POST" class="flex-1">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
+                        <input type="hidden" name="token_id" value="${token.id}"><input type="hidden" name="new_status" value="in_progress"><input type="hidden" name="update_status" value="1">
                         <button type="submit" class="w-full bg-slate-800 hover:bg-blue-900/30 text-blue-400 border border-slate-700 hover:border-blue-500/50 py-2.5 rounded-xl text-xs transition font-medium">Mark In Progress</button>
                     </form>
-                    <form method="POST" class="flex-1"><input type="hidden" name="token_id" value="${token.id}"><input type="hidden" name="new_status" value="completed"><input type="hidden" name="update_status" value="1">
+                    <form method="POST" class="flex-1">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
+                        <input type="hidden" name="token_id" value="${token.id}"><input type="hidden" name="new_status" value="completed"><input type="hidden" name="update_status" value="1">
                         <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl text-xs text-white transition font-medium shadow-lg shadow-emerald-600/20">Mark Completed</button>
                     </form>
                 </div>
