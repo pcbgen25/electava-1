@@ -139,23 +139,24 @@ $domainsJson = json_encode($domains);
         <table class="w-full text-left text-sm">
             <thead class="text-xs text-slate-500 uppercase bg-slate-900/50 border-b border-slate-800/50">
                 <tr>
+                    <th class="px-5 py-3 w-14">ID</th>
                     <th class="px-5 py-3">Employee</th>
                     <th class="px-5 py-3">Role</th>
                     <th class="px-5 py-3">Domain</th>
                     <th class="px-5 py-3">Status</th>
                     <th class="px-5 py-3">Logins</th>
-                    <th class="px-5 py-3">Tasks</th>
-                    <th class="px-5 py-3 text-right">Actions</th>
+                    <th class="px-5 py-3 text-right">Action</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/40">
                 <?php foreach ($users as $u):
                     $stats = $empStats[$u['id']];
                 ?>
-                <tr class="table-row cursor-pointer" onclick="openEmployeeDetail(<?= htmlspecialchars(json_encode($u)) ?>, <?= htmlspecialchars(json_encode($stats)) ?>)">
+                <tr class="table-row hover:bg-slate-800/20 transition">
+                    <td class="px-5 py-3.5 text-xs text-slate-600 font-mono">#<?= $u['id'] ?></td>
                     <td class="px-5 py-3.5">
                         <div class="flex items-center gap-3">
-                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-xs font-bold text-white shadow-lg">
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-xs font-bold text-white shadow-lg flex-shrink-0">
                                 <?= strtoupper(substr($u['full_name'] ?: $u['username'], 0, 1)) ?>
                             </div>
                             <div>
@@ -167,15 +168,31 @@ $domainsJson = json_encode($domains);
                             </div>
                         </div>
                     </td>
-                    <td class="px-5 py-3.5"><?= statusBadge($u['role'] === 'admin' ? 'active' : $u['role']) ?><span class="text-xs text-slate-400 ml-1 capitalize"><?= str_replace('_',' ',$u['role']) ?></span></td>
+                    <td class="px-5 py-3.5">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border
+                            <?= $u['role']==='core_admin' ? 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                              : ($u['role']==='admin' ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
+                              : ($u['role']==='employee' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                              : 'bg-amber-500/10 text-amber-300 border-amber-500/20')) ?>">
+                            <?= ucwords(str_replace('_',' ', $u['role'])) ?>
+                        </span>
+                    </td>
                     <td class="px-5 py-3.5 text-slate-400 text-xs"><?= htmlspecialchars($u['domain_name'] ?? '—') ?></td>
-                    <td class="px-5 py-3.5"><?= $u['status'] === 'active' ? '<span class="text-emerald-400 text-xs"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Active</span>' : '<span class="text-red-400 text-xs"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Disabled</span>' ?></td>
-                    <td class="px-5 py-3.5 text-xs text-slate-400"><?= $stats['logins'] ?></td>
-                    <td class="px-5 py-3.5 text-xs text-slate-400"><?= $stats['completed_tasks'] ?>/<?= $stats['tasks'] ?></td>
-                    <td class="px-5 py-3.5 text-right" onclick="event.stopPropagation()">
-                        <button onclick="openEmployeeDetail(<?= htmlspecialchars(json_encode($u)) ?>, <?= htmlspecialchars(json_encode($stats)) ?>)" class="text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition">
-                            <i class="fa-solid fa-eye mr-1"></i>View
-                        </button>
+                    <td class="px-5 py-3.5">
+                        <?= $u['status'] === 'active'
+                            ? '<span class="text-emerald-400 text-xs flex items-center gap-1"><i class="fa-solid fa-circle text-[6px]"></i>Active</span>'
+                            : '<span class="text-red-400 text-xs flex items-center gap-1"><i class="fa-solid fa-circle text-[6px]"></i>Disabled</span>' ?>
+                    </td>
+                    <td class="px-5 py-3.5">
+                        <span class="text-xs font-medium text-white"><?= $stats['logins'] ?></span>
+                        <?php if ($stats['last_login']): ?>
+                        <div class="text-[10px] text-slate-600 mt-0.5"><?= date('M j', strtotime($stats['last_login'])) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-5 py-3.5 text-right">
+                        <a href="/core_admin/employee_profile.php?id=<?= $u['id'] ?>" class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition">
+                            <i class="fa-solid fa-eye text-[10px]"></i>View
+                        </a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
