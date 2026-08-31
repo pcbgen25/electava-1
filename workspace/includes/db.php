@@ -15,7 +15,9 @@ if (!isset($_ENV['DB_HOST']) && file_exists($envFile)) {
 $host    = $_ENV['DB_HOST']    ?? getenv('DB_HOST')    ?: '127.0.0.1';
 $db      = $_ENV['DB_NAME']    ?? getenv('DB_NAME')    ?: 'electava_workspace';
 $user    = $_ENV['DB_USER']    ?? getenv('DB_USER')    ?: null;
-$pass    = $_ENV['DB_PASS']    ?? getenv('DB_PASS')    ?: null;
+// DB_PASS can be an empty string, so don't use ?: null if it's set
+$pass    = $_ENV['DB_PASS']    ?? getenv('DB_PASS');
+if ($pass === false) $pass = null;
 $charset = $_ENV['DB_CHARSET'] ?? getenv('DB_CHARSET') ?: 'utf8mb4';
 
 if (empty($user) || $pass === null) {
@@ -23,6 +25,7 @@ if (empty($user) || $pass === null) {
     http_response_code(503);
     die('Service temporarily unavailable.');
 }
+
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 $options = [
