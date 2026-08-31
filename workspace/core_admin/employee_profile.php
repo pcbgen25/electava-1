@@ -28,7 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $empId
             ]);
         logAudit($pdo, 'edit_employee', 'employee', $empId, 'Updated employee details');
-        $msg = 'Employee details updated successfully.';
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=details&mode=view&saved=1");
+        exit;
 
     } elseif ($_POST['action'] === 'reset_password') {
         $tempPass = bin2hex(random_bytes(10));
@@ -142,7 +143,67 @@ $allProjects = $pdo->query("SELECT * FROM projects WHERE status='active' ORDER B
 
 $completedTasks = count(array_filter($myTasks, fn($t) => in_array($t['status'], ['completed','approved'])));
 
-$activeTab = $_GET['tab'] ?? 'details';
+$activeTab  = $_GET['tab']  ?? 'details';
+$activeMode = $_GET['mode'] ?? 'view'; // 'view' or 'edit'
+$savedOk    = isset($_GET['saved']);
+
+// ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
+if ($activeTab === 'logins' && isset($_GET['export']) && $_GET['export'] === 'attendance') {
+    $filename = 'attendance_' . preg_replace('/[^a-z0-9]/i', '_', $emp['username']) . '_' . date('Y-m-d') . '.csv';
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+
+    $out = fopen('php://output', 'w');
+    // UTF-8 BOM for Excel
+    fputs($out, "\xEF\xBB\xBF");
+
+    // Employee summary header
+    fputcsv($out, ['Attendance Report']);
+    fputcsv($out, ['Employee', $emp['full_name']]);
+    fputcsv($out, ['ID', '#' . $emp['id']]);
+    fputcsv($out, ['Email', $emp['email']]);
+    fputcsv($out, ['Job Title', $emp['job_title'] ?: 'N/A']);
+    fputcsv($out, ['Role', ucwords(str_replace('_', ' ', $emp['role']))]);
+    fputcsv($out, ['Domain', $emp['domain_name'] ?: 'N/A']);
+    fputcsv($out, ['Export Date', date('d M Y, H:i')]);
+    fputcsv($out, []);
+
+    // Column headers
+    fputcsv($out, ['Date', 'Day', 'First Login', 'Last Logout', 'Work Time (hrs)', 'Break Time (hrs)', 'Sessions', 'Breaks Taken', 'IP Address(es)', 'Day Type']);
+
+    foreach ($loginLogs as $day) {
+        $wdate   = new DateTime($day['work_date']);
+        $firstIn = (new DateTime($day['first_login']))->format('H:i');
+        $lastOut = $day['last_logout'] ? (new DateTime($day['last_logout']))->format('H:i') : '';
+        $workHrs = $day['work_mins'] > 0 ? round($day['work_mins'] / 60, 2) : 0;
+        $brkHrs  = $day['break_mins'] > 0 ? round($day['break_mins'] / 60, 2) : 0;
+        $dayType = in_array($wdate->format('N'), [6,7]) ? 'Weekend' : 'Weekday';
+        fputcsv($out, [
+            $wdate->format('d/m/Y'),
+            $wdate->format('l'),
+            $firstIn,
+            $lastOut,
+            $workHrs,
+            $brkHrs,
+            (int)$day['sessions'],
+            (int)$day['breaks_taken'],
+            $day['ips'] ?? '',
+            $dayType,
+        ]);
+    }
+
+    // Summary row
+    fputcsv($out, []);
+    fputcsv($out, ['SUMMARY']);
+    fputcsv($out, ['Total Sessions', $totalLogins]);
+    fputcsv($out, ['Active Days', $activeDays]);
+    fputcsv($out, ['Total Work Time (hrs)', round($totalWorkMins / 60, 2)]);
+    fputcsv($out, ['This Month Sessions', $monthLogins]);
+
+    fclose($out);
+    exit;
+}
 ?>
 
 <?php if ($msg): ?>
@@ -215,12 +276,28 @@ $activeTab = $_GET['tab'] ?? 'details';
 <!-- TAB 1 — DETAILS -->
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
 <?php if ($activeTab === 'details'): ?>
+
+<?php if ($savedOk): ?>
+<div class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-3 rounded-xl mb-5 text-sm flex items-center gap-2">
+    <i class="fa-solid fa-check-circle"></i> Employee details saved successfully.
+</div>
+<?php endif; ?>
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Edit Form -->
+
+    <!-- Left: Details Card -->
     <div class="lg:col-span-2 glass-card rounded-2xl p-6 border border-slate-700/50">
-        <h3 class="text-sm font-semibold text-white mb-5 flex items-center gap-2">
-            <i class="fa-solid fa-user-pen text-emerald-400"></i>Edit Employee Details
-        </h3>
+
+        <?php if ($activeMode === 'edit'): ?>
+        <!-- ── EDIT MODE ── -->
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-pen text-emerald-400"></i>Edit Details
+            </h3>
+            <a href="?id=<?= $empId ?>&tab=details&mode=view" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/40 transition">
+                <i class="fa-solid fa-xmark text-[10px]"></i>Cancel
+            </a>
+        </div>
         <form method="POST" class="space-y-4">
             <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
             <input type="hidden" name="action" value="edit">
@@ -282,57 +359,113 @@ $activeTab = $_GET['tab'] ?? 'details';
                 <label class="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Notes</label>
                 <textarea name="notes" rows="3" class="input-field w-full px-3 py-2.5 rounded-xl text-sm"><?= htmlspecialchars($emp['notes'] ?? '') ?></textarea>
             </div>
-            <div class="flex justify-end pt-2">
-                <button type="submit" class="btn-primary px-6 py-2.5 rounded-xl text-sm text-white font-medium shadow-lg shadow-emerald-600/20">
+
+            <!-- Action buttons row -->
+            <div class="flex items-center justify-between pt-3 border-t border-slate-800/50">
+                <div class="flex items-center gap-2">
+                    <!-- Delete (small) -->
+                    <?php if ($emp['id'] !== $_SESSION['user_id']): ?>
+                    <button type="button"
+                        onclick="if(confirm('Delete this employee permanently?')) { document.getElementById('deleteForm').submit(); }"
+                        class="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition">
+                        <i class="fa-solid fa-trash text-[10px]"></i>Delete
+                    </button>
+                    <?php endif; ?>
+                    <!-- Reset Password (small) -->
+                    <button type="button"
+                        onclick="if(confirm('Reset password for this employee?')) { document.getElementById('resetForm').submit(); }"
+                        class="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 hover:border-amber-500/40 transition">
+                        <i class="fa-solid fa-key text-[10px]"></i>Reset Password
+                    </button>
+                </div>
+                <button type="submit" class="btn-primary px-5 py-2 rounded-xl text-sm text-white font-medium shadow-lg shadow-emerald-600/20">
                     <i class="fa-solid fa-floppy-disk mr-1.5"></i>Save Changes
                 </button>
             </div>
         </form>
-    </div>
 
-    <!-- Danger Zone -->
-    <div class="space-y-4">
-        <!-- Reset Password -->
-        <div class="glass-card rounded-2xl p-5 border border-amber-500/20">
-            <h4 class="text-sm font-semibold text-amber-400 mb-2 flex items-center gap-2"><i class="fa-solid fa-key"></i>Reset Password</h4>
-            <p class="text-xs text-slate-500 mb-4">Generate a random temporary password. Employee must change it on next login.</p>
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
-                <input type="hidden" name="action" value="reset_password">
-                <button class="btn-secondary w-full py-2 rounded-lg text-xs text-amber-300 border border-amber-500/20 hover:border-amber-500/40 transition">
-                    <i class="fa-solid fa-rotate mr-1.5"></i>Generate Temp Password
-                </button>
-            </form>
+        <!-- Hidden forms for delete/reset -->
+        <form id="deleteForm" method="POST" class="hidden">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+            <input type="hidden" name="action" value="delete">
+        </form>
+        <form id="resetForm" method="POST" class="hidden">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+            <input type="hidden" name="action" value="reset_password">
+        </form>
+
+        <?php else: ?>
+        <!-- ── VIEW MODE ── -->
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user text-emerald-400"></i>Employee Details
+            </h3>
+            <a href="?id=<?= $empId ?>&tab=details&mode=edit"
+               class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition">
+                <i class="fa-solid fa-pen text-[10px]"></i>Edit
+            </a>
         </div>
-
-        <!-- Employee Info -->
-        <div class="glass-card rounded-2xl p-5 border border-slate-700/50">
-            <h4 class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-3">Account Info</h4>
-            <div class="space-y-2 text-xs">
-                <div class="flex justify-between"><span class="text-slate-500">Employee ID</span><span class="text-white font-mono">#<?= $emp['id'] ?></span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Username</span><span class="text-white font-mono"><?= htmlspecialchars($emp['username']) ?></span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Last Login</span><span class="text-slate-300"><?= $emp['last_login_at'] ? date('M j, Y H:i', strtotime($emp['last_login_at'])) : 'Never' ?></span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Force PWD Change</span><span class="<?= $emp['force_password_change'] ? 'text-amber-400' : 'text-slate-400' ?>"><?= $emp['force_password_change'] ? 'Yes' : 'No' ?></span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Total Logins</span><span class="text-white"><?= $totalLogins ?></span></div>
+        <div class="grid grid-cols-2 gap-x-8 gap-y-4">
+            <?php
+            $fields = [
+                'Full Name'    => $emp['full_name'],
+                'Username'     => $emp['username'],
+                'Email'        => $emp['email'],
+                'Phone'        => $emp['phone'] ?: '—',
+                'Job Title'    => $emp['job_title'] ?: '—',
+                'Role'         => ucwords(str_replace('_',' ',$emp['role'])),
+                'Primary Domain' => $emp['domain_name'] ?: '—',
+                'Status'       => ucfirst($emp['status']),
+            ];
+            foreach ($fields as $label => $val):
+            ?>
+            <div class="border-b border-slate-800/40 pb-3">
+                <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1"><?= $label ?></div>
+                <div class="text-sm text-white font-medium"><?= htmlspecialchars((string)$val) ?></div>
             </div>
-        </div>
-
-        <!-- Delete -->
-        <?php if ($emp['id'] !== $_SESSION['user_id']): ?>
-        <div class="glass-card rounded-2xl p-5 border border-red-500/20">
-            <h4 class="text-sm font-semibold text-red-400 mb-2 flex items-center gap-2"><i class="fa-solid fa-trash"></i>Delete Employee</h4>
-            <p class="text-xs text-slate-500 mb-4">This is permanent and cannot be undone. All their data will be removed.</p>
-            <form method="POST" onsubmit="return confirm('Are you absolutely sure? This deletes the employee and all their data permanently.')">
-                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
-                <input type="hidden" name="action" value="delete">
-                <button class="w-full py-2 rounded-lg text-xs text-red-300 border border-red-500/20 hover:bg-red-500/10 transition">
-                    <i class="fa-solid fa-trash mr-1.5"></i>Delete Employee
-                </button>
-            </form>
+            <?php endforeach; ?>
+            <?php if ($emp['notes']): ?>
+            <div class="col-span-2 border-b border-slate-800/40 pb-3">
+                <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Notes</div>
+                <div class="text-sm text-slate-300"><?= nl2br(htmlspecialchars($emp['notes'])) ?></div>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </div>
+
+    <!-- Right: Account Info -->
+    <div class="glass-card rounded-2xl p-5 border border-slate-700/50 h-fit">
+        <h4 class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-4">Account Info</h4>
+        <div class="space-y-3 text-xs">
+            <div class="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                <span class="text-slate-500">Employee ID</span>
+                <span class="text-white font-mono">#<?= $emp['id'] ?></span>
+            </div>
+            <div class="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                <span class="text-slate-500">Last Login</span>
+                <span class="text-slate-300"><?= $emp['last_login_at'] ? date('M j, Y H:i', strtotime($emp['last_login_at'])) : 'Never' ?></span>
+            </div>
+            <div class="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                <span class="text-slate-500">Force PWD Change</span>
+                <span class="<?= $emp['force_password_change'] ? 'text-amber-400' : 'text-slate-400' ?>"><?= $emp['force_password_change'] ? 'Yes' : 'No' ?></span>
+            </div>
+            <div class="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                <span class="text-slate-500">Total Logins</span>
+                <span class="text-white"><?= $totalLogins ?></span>
+            </div>
+            <div class="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                <span class="text-slate-500">Total Work</span>
+                <span class="text-emerald-400 font-medium"><?= fmtMins($totalWorkMins) ?></span>
+            </div>
+            <div class="flex justify-between items-center py-1.5">
+                <span class="text-slate-500">Joined</span>
+                <span class="text-slate-300"><?= date('M j, Y', strtotime($emp['created_at'])) ?></span>
+            </div>
+        </div>
+    </div>
 </div>
+
 
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
 <!-- TAB 2 — LOGIN TRACKING -->
@@ -368,9 +501,13 @@ $activeTab = $_GET['tab'] ?? 'details';
     <div class="px-5 py-4 border-b border-slate-800/50 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-white flex items-center gap-2">
             <i class="fa-solid fa-calendar-days text-emerald-400"></i>Day-wise Attendance
-            <span class="text-slate-500 font-normal text-xs">(Last 60 days)</span>
+            <span class="text-slate-500 font-normal text-xs">(Last 60 days · one row per day)</span>
         </h3>
-        <span class="text-xs text-slate-600">One row per day — all sessions auto-aggregated</span>
+        <a href="?id=<?= $empId ?>&tab=logins&export=attendance"
+           class="inline-flex items-center gap-2 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition font-medium"
+           title="Download attendance as Excel-compatible CSV">
+            <i class="fa-solid fa-file-excel text-sm"></i>Export to Excel
+        </a>
     </div>
     <div class="overflow-x-auto">
         <table class="w-full text-sm text-left">
