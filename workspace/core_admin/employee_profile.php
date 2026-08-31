@@ -65,6 +65,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         logAudit($pdo, 'assign_project', 'project', $projId, "Assigned project to employee #$empId");
         $msg = 'Project assigned successfully.';
 
+    } elseif ($_POST['action'] === 'toggle_module') {
+        $mid     = (int)$_POST['module_id'];
+        $enabled = (int)$_POST['enabled'];
+        $pdo->prepare("INSERT INTO module_permissions (user_id, module_id, is_enabled) VALUES (?,?,?)
+                        ON DUPLICATE KEY UPDATE is_enabled = ?")
+            ->execute([$empId, $mid, $enabled, $enabled]);
+        logAudit($pdo, 'toggle_module_permission', 'module_permission', $empId,
+            "Module $mid set to " . ($enabled ? 'GRANTED' : 'REVOKED'));
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=permissions&perm_saved=1");
+        exit;
+
+    } elseif ($_POST['action'] === 'bulk_permissions') {
+        $bulkVal   = (int)$_POST['bulk_value']; // 1=grant all, 0=revoke all
+        $allMods   = $pdo->query("SELECT id FROM modules")->fetchAll();
+        $stmt      = $pdo->prepare("INSERT INTO module_permissions (user_id, module_id, is_enabled) VALUES (?,?,?)
+                                    ON DUPLICATE KEY UPDATE is_enabled = ?");
+        foreach ($allMods as $m) {
+            $stmt->execute([$empId, $m['id'], $bulkVal, $bulkVal]);
+        }
+        logAudit($pdo, 'bulk_module_permissions', 'user', $empId,
+            ($bulkVal ? 'Granted' : 'Revoked') . ' all module permissions');
+        header("Location: /core_admin/employee_profile.php?id=$empId&tab=permissions&perm_saved=1");
+        exit;
+
     } elseif ($_POST['action'] === 'delete') {
         if ($empId !== $_SESSION['user_id']) {
             $pdo->prepare("DELETE FROM users WHERE id=?")->execute([$empId]);
@@ -590,60 +614,167 @@ if ($activeTab === 'logins' && isset($_GET['export']) && $_GET['export'] === 'at
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
 <!-- TAB 3 — PERMISSIONS -->
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
-<?php elseif ($activeTab === 'permissions'): ?>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- Role-based Access Matrix -->
-    <div class="glass-card rounded-2xl p-6 border border-slate-700/50">
-        <h3 class="text-sm font-semibold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i>Role Access — <span class="text-emerald-400 capitalize"><?= str_replace('_',' ', $emp['role']) ?></span></h3>
-        <?php
-        $roleAccess = [
-            'core_admin' => ['Dashboard','Employees','Projects','Domains','Task Templates','Audit Logs','Employee Logins','Marketplace Tracking','Users','Careers','Reports','Permissions','Settings'],
-            'admin'      => ['Dashboard','Tasks','Approvals','Team','Vendors','Reports'],
-            'employee'   => ['Dashboard','My Tasks','Submissions','Components (if domain)','My Requests (if domain)','Service Queue (if domain)','Service Tokens (if domain)'],
-            'vendor'     => ['Dashboard','Products','Purchase Orders','Inventory','Company Profile'],
-        ];
-        $pages = $roleAccess[$emp['role']] ?? [];
-        ?>
-        <div class="space-y-2">
-            <?php foreach ($pages as $page): ?>
-            <div class="flex items-center gap-3 p-2.5 rounded-lg bg-slate-800/30">
-                <i class="fa-solid fa-check-circle text-emerald-400 text-xs w-4"></i>
-                <span class="text-xs text-slate-300"><?= htmlspecialchars($page) ?></span>
+<?php elseif ($activeTab === 'permissions'):
+    // Fetch all modules
+    $allModules = $pdo->query("SELECT * FROM modules ORDER BY id")->fetchAll();
+    // Fetch this employee's permission overrides
+    $empPermsStmt = $pdo->prepare("SELECT module_id, is_enabled FROM module_permissions WHERE user_id = ?");
+    $empPermsStmt->execute([$empId]);
+    $empPermMap = [];
+    foreach ($empPermsStmt->fetchAll() as $p) {
+        $empPermMap[$p['module_id']] = (int)$p['is_enabled'];
+    }
+?>
+
+<?php if (isset($_GET['perm_saved'])): ?>
+<div class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-3 rounded-xl mb-5 text-sm flex items-center gap-2">
+    <i class="fa-solid fa-check-circle"></i> Module permissions updated successfully.
+</div>
+<?php endif; ?>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT 2/3: Module Permissions -->
+    <div class="lg:col-span-2 space-y-5">
+
+        <!-- Header Info -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-700/50">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h3 class="text-sm font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-emerald-400"></i>Module Access Control
+                    </h3>
+                    <p class="text-xs text-slate-500">Toggle each module ON or OFF for <strong class="text-white"><?= htmlspecialchars($emp['full_name'] ?: $emp['username']) ?></strong>. Changes are applied immediately when you click a toggle.</p>
+                </div>
+                <span class="text-[10px] px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-300 border-blue-500/20 whitespace-nowrap capitalize">
+                    <?= str_replace('_', ' ', $emp['role']) ?>
+                </span>
+            </div>
+        </div>
+
+        <!-- Module Toggle Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <?php foreach ($allModules as $mod):
+                // Default: granted (1) unless explicitly revoked
+                $isEnabled = $empPermMap[$mod['id']] ?? 1;
+            ?>
+            <div class="glass-card rounded-xl p-4 border <?= $isEnabled ? 'border-emerald-500/20 bg-emerald-500/3' : 'border-red-500/20 bg-red-500/3' ?> transition-all">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg <?= $isEnabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800/60 text-slate-600' ?> flex items-center justify-center flex-shrink-0 transition-colors">
+                            <i class="fa-solid <?= htmlspecialchars($mod['icon']) ?> text-sm"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-semibold <?= $isEnabled ? 'text-white' : 'text-slate-500' ?>"><?= htmlspecialchars($mod['display_name']) ?></div>
+                            <div class="text-[10px] text-slate-600 mt-0.5"><?= htmlspecialchars($mod['description'] ?? '') ?></div>
+                        </div>
+                    </div>
+                    <!-- Toggle switch form -->
+                    <form method="POST" action="?id=<?= $empId ?>&tab=permissions&perm_saved=1" class="flex-shrink-0">
+                        <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                        <input type="hidden" name="action" value="toggle_module">
+                        <input type="hidden" name="module_id" value="<?= $mod['id'] ?>">
+                        <input type="hidden" name="enabled" value="<?= $isEnabled ? 0 : 1 ?>">
+                        <button type="submit"
+                            class="relative w-11 h-6 rounded-full transition-colors focus:outline-none <?= $isEnabled ? 'bg-emerald-500' : 'bg-slate-700' ?>"
+                            title="<?= $isEnabled ? 'Click to REVOKE access' : 'Click to GRANT access' ?>">
+                            <span class="absolute top-0.5 <?= $isEnabled ? 'right-0.5' : 'left-0.5' ?> w-5 h-5 bg-white rounded-full shadow transition-all"></span>
+                        </button>
+                    </form>
+                </div>
+                <!-- Status label -->
+                <div class="mt-3 pt-2.5 border-t <?= $isEnabled ? 'border-emerald-500/10' : 'border-red-500/10' ?> flex items-center gap-1.5">
+                    <i class="fa-solid <?= $isEnabled ? 'fa-circle-check text-emerald-400' : 'fa-circle-xmark text-red-400' ?> text-[10px]"></i>
+                    <span class="text-[10px] <?= $isEnabled ? 'text-emerald-400' : 'text-red-400' ?> font-medium"><?= $isEnabled ? 'ACCESS GRANTED' : 'ACCESS REVOKED' ?></span>
+                </div>
             </div>
             <?php endforeach; ?>
         </div>
-        <p class="text-xs text-slate-600 mt-4">Role permissions are controlled by the <strong>role</strong> field. Change the role in the Details tab to modify core access.</p>
+
+        <!-- Bulk Actions -->
+        <div class="glass-card rounded-xl p-4 border border-slate-700/50 flex items-center justify-between gap-4">
+            <span class="text-xs text-slate-500"><i class="fa-solid fa-bolt mr-1.5"></i>Bulk actions — apply to all modules at once</span>
+            <div class="flex gap-2">
+                <form method="POST" action="?id=<?= $empId ?>&tab=permissions&perm_saved=1">
+                    <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                    <input type="hidden" name="action" value="bulk_permissions">
+                    <input type="hidden" name="bulk_value" value="1">
+                    <button class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 transition">
+                        <i class="fa-solid fa-circle-check text-[10px]"></i>Grant All
+                    </button>
+                </form>
+                <form method="POST" action="?id=<?= $empId ?>&tab=permissions&perm_saved=1">
+                    <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                    <input type="hidden" name="action" value="bulk_permissions">
+                    <input type="hidden" name="bulk_value" value="0">
+                    <button class="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 transition">
+                        <i class="fa-solid fa-circle-xmark text-[10px]"></i>Revoke All
+                    </button>
+                </form>
+            </div>
+        </div>
+
     </div>
 
-    <!-- Domain Permissions -->
-    <div class="glass-card rounded-2xl p-6 border border-slate-700/50">
-        <h3 class="text-sm font-semibold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-network-wired text-blue-400"></i>Domain Access</h3>
-        <p class="text-xs text-slate-500 mb-4">Primary domain is set in Details. Grant additional domain access below.</p>
-        <form method="POST" class="space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
-            <input type="hidden" name="action" value="save_permissions">
-            <?php foreach ($domains as $d): ?>
-            <?php $isPrimary = ((int)$emp['domain_id'] === (int)$d['id']); ?>
-            <label class="flex items-center gap-3 p-3 rounded-xl border <?= $isPrimary ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-slate-700/40 bg-slate-800/20 hover:bg-slate-800/40' ?> cursor-pointer transition">
-                <input type="checkbox" name="allowed_domains[]" value="<?= $d['id'] ?>"
-                    <?= $isPrimary ? 'checked disabled' : '' ?>
-                    <?= (!$isPrimary && in_array((int)$d['id'], $allowedDomainsArr)) ? 'checked' : '' ?>
-                    class="w-4 h-4 accent-emerald-500">
-                <div>
-                    <div class="text-xs font-medium text-white"><?= htmlspecialchars($d['name']) ?></div>
-                    <div class="text-[10px] text-slate-500"><?= htmlspecialchars($d['description'] ?? '') ?></div>
+    <!-- RIGHT 1/3: Domain Access + Summary -->
+    <div class="space-y-5">
+
+        <!-- Permission Summary -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-700/50">
+            <h4 class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-4">Permission Summary</h4>
+            <?php
+                $grantedCount = count(array_filter(array_map(fn($m) => $empPermMap[$m['id']] ?? 1, $allModules)));
+                $revokedCount = count($allModules) - $grantedCount;
+            ?>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-emerald-500/10 rounded-xl p-3 text-center border border-emerald-500/20">
+                    <div class="text-2xl font-bold text-emerald-400"><?= $grantedCount ?></div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Granted</div>
                 </div>
-                <?php if ($isPrimary): ?>
-                <span class="ml-auto text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Primary</span>
-                <?php endif; ?>
-            </label>
-            <?php endforeach; ?>
-            <div class="flex justify-end pt-2">
-                <button type="submit" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium">
-                    <i class="fa-solid fa-floppy-disk mr-1.5"></i>Save Permissions
-                </button>
+                <div class="bg-red-500/10 rounded-xl p-3 text-center border border-red-500/20">
+                    <div class="text-2xl font-bold text-red-400"><?= $revokedCount ?></div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Revoked</div>
+                </div>
             </div>
-        </form>
+            <!-- Mini bar -->
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-emerald-500 rounded-full transition-all" style="width: <?= count($allModules) > 0 ? round($grantedCount / count($allModules) * 100) : 0 ?>%"></div>
+            </div>
+            <div class="text-[10px] text-slate-600 mt-1.5 text-right"><?= $grantedCount ?>/<?= count($allModules) ?> modules accessible</div>
+        </div>
+
+        <!-- Domain Access -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-700/50">
+            <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-network-wired text-blue-400"></i>Domain Access
+            </h4>
+            <p class="text-xs text-slate-500 mb-3">Grant access to additional domains beyond the primary.</p>
+            <form method="POST" action="?id=<?= $empId ?>&tab=permissions&perm_saved=1" class="space-y-2">
+                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                <input type="hidden" name="action" value="save_permissions">
+                <?php foreach ($domains as $d):
+                    $isPrimary = ((int)$emp['domain_id'] === (int)$d['id']);
+                ?>
+                <label class="flex items-center gap-3 p-3 rounded-xl border <?= $isPrimary ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-slate-700/40 bg-slate-800/20 hover:bg-slate-800/40' ?> cursor-pointer transition">
+                    <input type="checkbox" name="allowed_domains[]" value="<?= $d['id'] ?>"
+                        <?= $isPrimary ? 'checked disabled' : '' ?>
+                        <?= (!$isPrimary && in_array((int)$d['id'], $allowedDomainsArr)) ? 'checked' : '' ?>
+                        class="w-4 h-4 accent-emerald-500">
+                    <div class="flex-1">
+                        <div class="text-xs font-medium text-white"><?= htmlspecialchars($d['name']) ?></div>
+                        <div class="text-[10px] text-slate-600"><?= htmlspecialchars($d['description'] ?? '') ?></div>
+                    </div>
+                    <?php if ($isPrimary): ?>
+                    <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Primary</span>
+                    <?php endif; ?>
+                </label>
+                <?php endforeach; ?>
+                <button type="submit" class="btn-primary w-full py-2 rounded-xl text-xs text-white mt-2">
+                    <i class="fa-solid fa-floppy-disk mr-1.5"></i>Save Domain Access
+                </button>
+            </form>
+        </div>
+
     </div>
 </div>
 
