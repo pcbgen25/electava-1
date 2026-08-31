@@ -85,14 +85,51 @@ $domains  = $pdo->query("SELECT * FROM domains ORDER BY name")->fetchAll();
 $allowedDomainsArr = json_decode($emp['allowed_domains'] ?? '[]', true) ?? [];
 
 // ─── LOGIN STATS ───────────────────────────────────────────────────────────────
-$totalLogins   = $pdo->prepare("SELECT COUNT(*) FROM login_logs WHERE user_id=? AND status='success'");
+$totalLogins = $pdo->prepare("SELECT COUNT(*) FROM login_logs WHERE user_id=? AND status='success'");
 $totalLogins->execute([$empId]); $totalLogins = $totalLogins->fetchColumn();
 
-$monthLogins   = $pdo->prepare("SELECT COUNT(*) FROM login_logs WHERE user_id=? AND status='success' AND MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())");
+$monthLogins = $pdo->prepare("SELECT COUNT(*) FROM login_logs WHERE user_id=? AND status='success' AND MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())");
 $monthLogins->execute([$empId]); $monthLogins = $monthLogins->fetchColumn();
 
-$loginLogs = $pdo->prepare("SELECT * FROM login_logs WHERE user_id=? ORDER BY created_at DESC LIMIT 100");
+$totalWorkMins = $pdo->prepare("SELECT COALESCE(SUM(session_duration_mins),0) FROM login_logs WHERE user_id=? AND status='success' AND session_duration_mins IS NOT NULL");
+$totalWorkMins->execute([$empId]); $totalWorkMins = (int)$totalWorkMins->fetchColumn();
+
+$activeDays = $pdo->prepare("SELECT COUNT(DISTINCT DATE(created_at)) FROM login_logs WHERE user_id=? AND status='success'");
+$activeDays->execute([$empId]); $activeDays = (int)$activeDays->fetchColumn();
+
+// Day-wise aggregated view: one row per day
+$loginLogs = $pdo->prepare("
+    SELECT
+        DATE(created_at)                                                         AS work_date,
+        MIN(created_at)                                                          AS first_login,
+        MAX(COALESCE(logout_at, created_at))                                     AS last_logout,
+        COUNT(*)                                                                 AS sessions,
+        GREATEST(COUNT(*) - 1, 0)                                               AS breaks_taken,
+        COALESCE(SUM(session_duration_mins), 0)                                 AS work_mins,
+        GREATEST(
+            TIMESTAMPDIFF(MINUTE, MIN(created_at),
+                          MAX(COALESCE(logout_at, created_at)))
+            - COALESCE(SUM(session_duration_mins), 0),
+            0
+        )                                                                        AS break_mins,
+        TIMESTAMPDIFF(MINUTE, MIN(created_at),
+                      MAX(COALESCE(logout_at, created_at)))                      AS span_mins,
+        GROUP_CONCAT(DISTINCT COALESCE(ip_address,'?') ORDER BY created_at SEPARATOR ', ') AS ips,
+        MIN(status)                                                              AS day_status
+    FROM login_logs
+    WHERE user_id = ? AND status = 'success'
+    GROUP BY DATE(created_at)
+    ORDER BY work_date DESC
+    LIMIT 60
+");
 $loginLogs->execute([$empId]); $loginLogs = $loginLogs->fetchAll();
+
+// Helper: format minutes → "Xh Ym"
+function fmtMins(int $mins): string {
+    if ($mins <= 0) return '—';
+    $h = floor($mins / 60); $m = $mins % 60;
+    return ($h > 0 ? "{$h}h " : '') . "{$m}m";
+}
 
 // ─── TASK & PROJECT STATS ──────────────────────────────────────────────────────
 $myTasks = $pdo->prepare("SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.assigned_to=? ORDER BY t.created_at DESC");
@@ -301,68 +338,101 @@ $activeTab = $_GET['tab'] ?? 'details';
 <!-- TAB 2 — LOGIN TRACKING -->
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
 <?php elseif ($activeTab === 'logins'): ?>
-<!-- Stats Row -->
-<div class="grid grid-cols-3 gap-4 mb-6">
+
+<!-- Stats Row — 5 cards -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
     <div class="glass-card p-4 rounded-2xl text-center border border-slate-700/50">
         <div class="text-2xl font-bold text-white"><?= $totalLogins ?></div>
-        <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Total Logins</div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Total Sessions</div>
     </div>
     <div class="glass-card p-4 rounded-2xl text-center border border-slate-700/50">
         <div class="text-2xl font-bold text-emerald-400"><?= $monthLogins ?></div>
         <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">This Month</div>
     </div>
     <div class="glass-card p-4 rounded-2xl text-center border border-slate-700/50">
-        <div class="text-lg font-bold text-blue-300"><?= $emp['last_login_at'] ? date('M j, Y H:i', strtotime($emp['last_login_at'])) : 'Never' ?></div>
+        <div class="text-2xl font-bold text-blue-400"><?= $activeDays ?></div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Active Days</div>
+    </div>
+    <div class="glass-card p-4 rounded-2xl text-center border border-slate-700/50">
+        <div class="text-lg font-bold text-purple-300"><?= fmtMins($totalWorkMins) ?></div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Total Work Time</div>
+    </div>
+    <div class="glass-card p-4 rounded-2xl text-center border border-slate-700/50">
+        <div class="text-lg font-bold text-amber-300"><?= $emp['last_login_at'] ? date('M j, H:i', strtotime($emp['last_login_at'])) : '—' ?></div>
         <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Last Login</div>
     </div>
 </div>
 
-<!-- Login Table -->
+<!-- Day-wise Login Table -->
 <div class="glass-card rounded-2xl overflow-hidden border border-slate-700/50">
     <div class="px-5 py-4 border-b border-slate-800/50 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-emerald-400"></i>Login History <span class="text-slate-500 font-normal text-xs">(Last 100 sessions)</span></h3>
+        <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+            <i class="fa-solid fa-calendar-days text-emerald-400"></i>Day-wise Attendance
+            <span class="text-slate-500 font-normal text-xs">(Last 60 days)</span>
+        </h3>
+        <span class="text-xs text-slate-600">One row per day — all sessions auto-aggregated</span>
     </div>
     <div class="overflow-x-auto">
         <table class="w-full text-sm text-left">
-            <thead class="text-xs text-slate-500 uppercase bg-slate-900/50 border-b border-slate-800/50">
+            <thead class="text-xs text-slate-500 uppercase bg-slate-900/60 border-b border-slate-800/50">
                 <tr>
                     <th class="px-5 py-3">Date</th>
-                    <th class="px-5 py-3">Login Time</th>
-                    <th class="px-5 py-3">Logout Time</th>
-                    <th class="px-5 py-3">Duration</th>
-                    <th class="px-5 py-3">IP Address</th>
-                    <th class="px-5 py-3">Device</th>
-                    <th class="px-5 py-3">Browser</th>
-                    <th class="px-5 py-3">Status</th>
+                    <th class="px-5 py-3">First Login</th>
+                    <th class="px-5 py-3">Last Logout</th>
+                    <th class="px-5 py-3 text-emerald-400">Work Time</th>
+                    <th class="px-5 py-3 text-amber-400">Break Time</th>
+                    <th class="px-5 py-3">Sessions</th>
+                    <th class="px-5 py-3">Breaks Taken</th>
+                    <th class="px-5 py-3">IP(s)</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/40">
                 <?php if (empty($loginLogs)): ?>
-                <tr><td colspan="8" class="px-5 py-10 text-center text-slate-500 text-sm">No login records found.</td></tr>
+                <tr><td colspan="8" class="px-5 py-12 text-center text-slate-500 text-sm">No attendance records found yet.</td></tr>
                 <?php else: ?>
-                <?php foreach ($loginLogs as $log): ?>
-                <?php
-                    $loginDt  = new DateTime($log['created_at']);
-                    $logoutDt = $log['logout_at'] ? new DateTime($log['logout_at']) : null;
-                    $durMins  = $log['session_duration_mins'];
-                    $durText  = '—';
-                    if ($durMins !== null) {
-                        $h = floor($durMins/60); $m = $durMins%60;
-                        $durText = ($h > 0 ? "{$h}h " : '') . "{$m}m";
-                    }
+                <?php foreach ($loginLogs as $day):
+                    $wdate    = new DateTime($day['work_date']);
+                    $firstIn  = (new DateTime($day['first_login']))->format('H:i');
+                    $lastOut  = $day['last_logout'] ? (new DateTime($day['last_logout']))->format('H:i') : '—';
+                    $workMins = (int)$day['work_mins'];
+                    $brkMins  = (int)$day['break_mins'];
+                    $sessions = (int)$day['sessions'];
+                    $breaks   = (int)$day['breaks_taken'];
+                    // Colour-code the work time bar
+                    $workPct  = $day['span_mins'] > 0 ? min(100, round(($workMins / max($day['span_mins'], 1)) * 100)) : 0;
+                    $isToday  = ($wdate->format('Y-m-d') === date('Y-m-d'));
+                    $isWeekend= in_array($wdate->format('N'), [6,7]);
                 ?>
-                <tr class="table-row hover:bg-slate-800/20 transition">
-                    <td class="px-5 py-3 text-xs text-slate-400 font-medium"><?= $loginDt->format('M j, Y') ?></td>
-                    <td class="px-5 py-3 text-xs text-white font-mono"><?= $loginDt->format('H:i:s') ?></td>
-                    <td class="px-5 py-3 text-xs <?= $logoutDt ? 'text-slate-300 font-mono' : 'text-slate-600' ?>"><?= $logoutDt ? $logoutDt->format('H:i:s') : '—' ?></td>
-                    <td class="px-5 py-3 text-xs <?= $durMins !== null ? 'text-emerald-400 font-medium' : 'text-slate-600' ?>"><?= $durText ?></td>
-                    <td class="px-5 py-3 text-xs text-slate-400 font-mono"><?= htmlspecialchars($log['ip_address'] ?? '—') ?></td>
-                    <td class="px-5 py-3 text-xs text-slate-400"><?= htmlspecialchars(ucfirst($log['device_type'] ?? '—')) ?></td>
-                    <td class="px-5 py-3 text-xs text-slate-400"><?= htmlspecialchars($log['browser'] ?? '—') ?></td>
-                    <td class="px-5 py-3">
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border <?= $log['status']==='success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20' ?>">
-                            <?= strtoupper($log['status']) ?>
-                        </span>
+                <tr class="hover:bg-slate-800/20 transition <?= $isToday ? 'bg-emerald-500/5 border-l-2 border-emerald-500/40' : '' ?>">
+                    <td class="px-5 py-3.5">
+                        <div class="font-semibold text-white text-xs"><?= $wdate->format('D, M j') ?></div>
+                        <div class="text-[10px] text-slate-500 mt-0.5"><?= $wdate->format('Y') ?><?= $isToday ? ' · <span class="text-emerald-400">Today</span>' : '' ?><?= $isWeekend ? ' · <span class="text-amber-500">Weekend</span>' : '' ?></div>
+                    </td>
+                    <td class="px-5 py-3.5 font-mono text-xs text-white"><?= $firstIn ?></td>
+                    <td class="px-5 py-3.5 font-mono text-xs <?= $day['last_logout'] ? 'text-slate-300' : 'text-slate-600' ?>"><?= $lastOut ?></td>
+                    <td class="px-5 py-3.5">
+                        <div class="font-bold text-xs text-emerald-400"><?= fmtMins($workMins) ?></div>
+                        <?php if ($day['span_mins'] > 0): ?>
+                        <div class="w-16 h-1 bg-slate-700 rounded-full mt-1.5 overflow-hidden">
+                            <div class="h-full bg-emerald-500 rounded-full" style="width:<?= $workPct ?>%"></div>
+                        </div>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-5 py-3.5">
+                        <span class="text-xs <?= $brkMins > 0 ? 'text-amber-400 font-medium' : 'text-slate-600' ?>"><?= fmtMins($brkMins) ?></span>
+                    </td>
+                    <td class="px-5 py-3.5">
+                        <span class="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold inline-flex items-center justify-center"><?= $sessions ?></span>
+                    </td>
+                    <td class="px-5 py-3.5">
+                        <?php if ($breaks > 0): ?>
+                        <span class="w-6 h-6 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold inline-flex items-center justify-center"><?= $breaks ?></span>
+                        <?php else: ?>
+                        <span class="text-slate-600 text-xs">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-5 py-3.5 text-[10px] text-slate-600 font-mono max-w-[120px] truncate" title="<?= htmlspecialchars($day['ips'] ?? '') ?>">
+                        <?= htmlspecialchars($day['ips'] ?? '—') ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -370,6 +440,14 @@ $activeTab = $_GET['tab'] ?? 'details';
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Legend -->
+<div class="mt-3 flex items-center gap-5 text-[10px] text-slate-600 px-1">
+    <span><span class="text-emerald-400 font-bold">Work Time</span> = Sum of all login→logout durations in the day</span>
+    <span><span class="text-amber-400 font-bold">Break Time</span> = Total span minus work time (gaps between sessions)</span>
+    <span><span class="text-blue-400 font-bold">Sessions</span> = Number of login events in the day</span>
+    <span><span class="text-amber-400 font-bold">Breaks</span> = Sessions − 1</span>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════════ -->
