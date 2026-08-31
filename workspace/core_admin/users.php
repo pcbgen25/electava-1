@@ -41,8 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $mailtoBody = rawurlencode($replyBody);
         $mailtoLink = "mailto:$customerEmail?subject=$mailtoSubject&body=$mailtoBody";
 
-        // Redirect to open mail composer
-        echo "<script>window.location.href = '$mailtoLink'; setTimeout(function(){ window.location.href = 'users.php?msg=reply_sent'; }, 1000);</script>";
+        // Redirect to open mail composer — use json_encode to prevent XSS via mailto URL
+        $safeMailtoLink = json_encode($mailtoLink, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        echo "<script>window.location.href = {$safeMailtoLink}; setTimeout(function(){ window.location.href = 'users.php?msg=reply_sent'; }, 1000);</script>";
         exit;
     }
 }
